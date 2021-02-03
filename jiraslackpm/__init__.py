@@ -1,23 +1,12 @@
 import jira
 import db
+import slack
 
 def main():
-
-    db.load_users_into_bigquery("k-ren-295903","jira")
-
-    """
-    variable = jira.get_all_users()
-    print(variable)
-    """
-    
-    
-    """
-    for user in variable:
-        userId = user['accountId']
-        issuesUser = jira.get_all_issues_by_user(userId)
-        print(issuesUser)
-    """
-    
+    slack_client = slack.SlackClient()
+    user_response = slack_client.get_user_by_email("ivan@tyba.com.co")
+    print(user_response)
+    #slack_client.post_message_to_channel(channel="CJXPQCQKD", message="Hello tybers, I'm your new bot :)")
 
 if __name__ == "__main__":
     main()

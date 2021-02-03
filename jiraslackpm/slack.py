@@ -3,16 +3,15 @@ import os
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web import SlackResponse
-
-
+from config import Config
 class SlackClient(object):
     def __init__(self, token=None):
-        self.client = WebClient(token=token or os.environ['SLACK_OAUTH_ACCESS_TOKEN'])
-
+        self.client = WebClient(token=token or Config.SLACK_OAUTH_ACCESS_TOKEN)
+        #self.client = WebClient("xoxb-657067239111-1695223602871-NtXiSrPSvdxNiUOO1SfiZlb4")   
     def post_message_to_channel(self, channel: str, message: str):
         try:
             response = self.client.chat_postMessage(channel=channel, text=message)
-            assert response["message"]["text"] == "Hello world!"
+            #assert response["message"]["text"] == "Hello world!"
             return response.get('message')
         except SlackApiError as e:
             # You will get a SlackApiError if "ok" is False
