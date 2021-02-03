@@ -1,4 +1,18 @@
-SELECT
+SELECT (CASE
+      WHEN issues.avg_points IS NULL THEN 0
+    ELSE
+    issues.avg_points
+  END
+    ) AS avg_points,
+  (CASE
+      WHEN bugs.week_bugs IS NULL THEN 0
+    ELSE
+    bugs.week_bugs
+  END
+    ) AS week_bugs,
+  CURRENT_DATE("UTC-5:00") AS index_date
+FROM (
+  SELECT
   AVG(top_issues_dev.story_points/top_issues_dev.day_diff) AS avg_points,
   CURRENT_DATE("UTC-5:00") AS index_date
 FROM (
@@ -24,4 +38,18 @@ FROM (
     AND issue.stage = "ENV: DEV"
     AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, DAY) < 7
   ORDER BY
-    story_points ASC) AS top_issues_dev
+    story_points ASC) AS top_issues_dev) AS issues
+FULL OUTER JOIN (
+  SELECT
+  COUNT(issue.issue_type) AS week_bugs,
+  CURRENT_DATE("UTC-5:00") AS index_date
+FROM
+  `k-ren-295903.jira.Issue` AS issue
+WHERE
+  issue.issue_type = "Error"
+  AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.created_at, DAY) <= 7
+  AND issue.project_name != "Support"
+) AS bugs
+ON
+  issues.index_date  = bugs.index_date 
+ORDER BY avg_points DESC

@@ -6,7 +6,6 @@ import dateutil.parser
 import pytz
 from google.api_core.exceptions import Conflict, NotFound
 import google.cloud.bigquery as bigquery
-from google.oauth2 import service_account
 
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user
 from utils import get_users_info
@@ -236,4 +235,3 @@ def load_new_issues_into_bigquery(project_id, database_name):
                         user["accountId"], user["accountType"]
                     )
                 )
-                

@@ -1,4 +1,5 @@
 SELECT
+  top_issues_dev.project_name,
   AVG(top_issues_dev.story_points/top_issues_dev.day_diff) AS avg_points,
   CURRENT_DATE("UTC-5:00") AS index_date
 FROM (
@@ -13,6 +14,7 @@ FROM (
     issue.updated_at,
     issue.created_at,
     issue.assignee,
+    issue.project_name,
     user.display_name,
     user.email,
     TIMESTAMP_DIFF(issue.updated_at, issue.created_at, SECOND)/86400 AS day_diff
@@ -25,3 +27,5 @@ FROM (
     AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, DAY) < 7
   ORDER BY
     story_points ASC) AS top_issues_dev
+GROUP BY
+  top_issues_dev.project_name

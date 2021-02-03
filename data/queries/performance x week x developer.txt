@@ -1,14 +1,12 @@
 SELECT
+  top_issues_dev.assignee,
+  top_issues_dev.display_name,
+  top_issues_dev.email,
   AVG(top_issues_dev.story_points/top_issues_dev.day_diff) AS avg_points,
   CURRENT_DATE("UTC-5:00") AS index_date
 FROM (
   SELECT
-    (CASE
-        WHEN issue.story_points IS NULL THEN 0
-      ELSE
-      issue.story_points
-    END
-      ) AS story_points,
+    (CASE WHEN issue.story_points IS NULL THEN 0 ELSE issue.story_points END) AS story_points,
     issue.stage,
     issue.updated_at,
     issue.created_at,
@@ -22,6 +20,12 @@ FROM (
   WHERE
     user.account_id = issue.assignee
     AND issue.stage = "ENV: DEV"
-    AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, DAY) < 7
+    AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, DAY) <= 7
   ORDER BY
     story_points ASC) AS top_issues_dev
+GROUP BY
+  top_issues_dev.assignee,
+  top_issues_dev.display_name,
+  top_issues_dev.email
+ORDER BY
+  avg_points DESC
