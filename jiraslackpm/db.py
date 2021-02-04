@@ -9,14 +9,22 @@ import google.cloud.bigquery as bigquery
 
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user
 from utils import get_users_info
+from slack import SlackClient
+from config import Config
 
-class BigQueryDatabase(object):
-    """BigQuery database class that holds our data"""
+class TyBot(object):
+    """
+    This bot integrates tyba JIRA information into a BigQuery database
+    and use Slack web API to send reports of the performance of the 
+    Tyba's engineering team 
+    """
 
     def __init__(self, project_id, db_name):
         """Initialize db class variables"""
         self.client = bigquery.Client(project=project_id)
         self.dataset_id = "{}.{}".format(self.client.project, db_name)
+        self.week_devs_performance = Config.WEEK_DEVS_PERFORMANCE_TABLE
+        self.slack_client = SlackClient()
         try:
             dataset = bigquery.Dataset(self.dataset_id)
             dataset = self.client.create_dataset(
@@ -42,6 +50,10 @@ class BigQueryDatabase(object):
         self.dataset = None
 
     def create_table(self, table_name: str, schema: list):
+        """
+        Creates a table into the BigQuery project dataset
+        initialized in the object, using the schema given as parameter. 
+        """
         table_id = "{}.{}".format(self.dataset_id, table_name)
         try:
             table = bigquery.Table(table_id, schema=schema)
@@ -51,6 +63,8 @@ class BigQueryDatabase(object):
         return table
 
     def delete_table(self, table_name: str):
+        """Deletes the table given as parameter"""
+
         table_id = "{}.{}".format(self.dataset_id, table_name)
         try:
             self.client.delete_table(table_id)
@@ -58,6 +72,8 @@ class BigQueryDatabase(object):
             print("Table already deleted...")
 
     def insert_records(self, table_name, records: list):
+        """inserts the records list into the table given as parameter"""
+
         table_id = "{}.{}".format(self.dataset_id, table_name)
         errors = self.client.insert_rows_json(table_id, records)
         if not errors:
@@ -119,6 +135,72 @@ class BigQueryDatabase(object):
             issues = self.create_table(issues_table_name, issues_schema)
         return users, issues
 
+    def send_congrats_top5_performance_devs(self):
+        query = f"""
+                    select * from `{self.dataset_id}.{self.week_devs_performance}` as week_dev_pf
+                    where week_dev_pf.index_date = CURRENT_DATE("UTC-5:00")
+                    order by week_dev_pf.avg_points desc
+                    limit 5
+                """
+        query_job = self.client.query(query)
+        for row in query_job:
+            # Row values can be accessed by field name or index.
+            email, avg_points, week_bugs = row[2], row[3], row[4]
+            # Send message to user
+            user = self.slack_client.get_user_by_email(email)
+            congrats_messg = f"{avg_points} {week_bugs}"
+            self.slack_client.post_message_to_channel(channel=user['id'], message=congrats_messg)            
+    
+    def send_bad_issues_report(self):
+        query = f"""
+                select user.email, issue.story_points, issue.stage, 
+                       issue.priority, issue.issue_name, issue.project_name,
+                       issue.created_at, issue.updated_at, issue.index_date
+                from `{self.dataset_id}.Issue` as issue, `{self.dataset_id}.User` as user
+                where user.account_id = issue.assignee
+                and issue.story_points is NULL 
+                and (timestamp_diff(current_timestamp() , issue.created_at, DAY) <= 7
+                    or timestamp_diff(current_timestamp(), issue.updated_at, DAY) <= 7)
+                 """
+        query_job = self.client.query(query)
+        bad_issues_by_user = {}
+        for row in query_job:
+            user_email = row[0]
+            
+            if bad_issues_by_user.get(user_email) == None:
+                bad_issues_by_user[user_email] = []
+                bad_issue_stage = row[2]
+                bad_issue_priority = row[3]
+                bad_issue_name = row[4]
+                bad_issue_project_name = row[5]
+                new_bad_issue = {
+                                 "stage": bad_issue_stage,
+                                 "priority": bad_issue_priority,
+                                 "name": bad_issue_name,
+                                 "project_name": bad_issue_project_name
+                                }
+                bad_issues_by_user[user_email].append(new_bad_issue)
+            else:
+                bad_issue_stage = row[2]
+                bad_issue_priority = row[3]
+                bad_issue_name = row[4]
+                bad_issue_project_name = row[5]
+                new_bad_issue = {
+                                 "stage": bad_issue_stage,
+                                 "priority": bad_issue_priority,
+                                 "name": bad_issue_name,
+                                 "project_name": bad_issue_project_name
+                                }
+                bad_issues_by_user[user_email].append(new_bad_issue)
+        
+        for user_email in bad_issues_by_user:
+            mssg = "Por favor revisa los siguientes Issues sin story points:\n"
+            for bad_issue in bad_issues_by_user[user_email]:
+                mssg+= bad_issue
+            user = self.slack_client.get_user_by_email(user_email)
+            self.slack_client.post_message_to_channel(channel=user['id'], message=mssg)
+
+
 
 class SQLiteDatabase(object):
     """sqlite3 database class that holds our data"""
@@ -156,7 +238,7 @@ class SQLiteDatabase(object):
         self.connection.commit()
 
 def load_users_into_bigquery(project_id, database_name):
-    with BigQueryDatabase(project_id, database_name) as db:
+    with TyBot(project_id, database_name) as db:
         db.delete_table("User")
         users_table_id = "{}.{}".format(db.dataset_id, "User")
         #if the user table does exist, it doesn't have to be initialized again.
@@ -200,7 +282,7 @@ def load_users_into_bigquery(project_id, database_name):
                 
 
 def load_new_issues_into_bigquery(project_id, database_name):
-    with BigQueryDatabase(project_id, database_name) as db:
+    with TyBot(project_id, database_name) as db:
         users_table, issues_table = db.initialize_tables()
         print(users_table, issues_table)
         users = get_all_users()

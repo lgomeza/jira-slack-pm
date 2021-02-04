@@ -14,4 +14,3 @@ def get_users_info() -> pd.DataFrame:
     active_users = users_df[users_df['active'] == 'Yes']
     
     return active_users
-

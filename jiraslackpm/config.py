@@ -11,3 +11,4 @@ class Config:
 
     # General Config
     SLACK_OAUTH_ACCESS_TOKEN = environ.get('SLACK_OAUTH_ACCESS_TOKEN')
+    WEEK_DEVS_PERFORMANCE_TABLE= environ.get('WEEK_DEVS_PERFORMANCE_TABLE')
