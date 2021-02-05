@@ -233,7 +233,7 @@ class TyBot(object):
                     SELECT
                     *
                     FROM
-                    `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLES}` AS week_squad_pf
+                    `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLE}` AS week_squad_pf
                     WHERE
                     week_squad_pf.index_date = CURRENT_DATE("UTC-5:00")
                     ORDER BY
@@ -256,7 +256,27 @@ class TyBot(object):
             elif squad == "Robo":
                 self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_ROBO, message=mssg)
 
-   #def send_weekly_tyba_performance(self, admin_emails: list):
+    def send_weekly_tyba_performance(self, admin_emails: list):
+        query = f"""
+                SELECT
+                *
+                FROM
+                `{self.dataset_id}.{Config.WEEK_TYBA_PERFORMANCE_TABLE}` AS week_tyba_pf
+                WHERE
+                week_tyba_pf.index_date = CURRENT_DATE("UTC-5:00")
+                ORDER BY
+                week_tyba_pf.avg_points DESC
+                """
+        query_job = self.client.query(query)
+        for row in query_job:
+        avg_point, week_bugs = row[0], row[1]
+        mssg = f"""¡Hola! Este es el reporte semanal de Tyba. \n
+                    Esta semana el equipo completo tuvo una productividad de: {avg_point}. \n
+                    Además, se subieron un total de {week_bugs} bugs en producción. \n
+                    ¡Feliz Semana!
+                """
+        self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
+
        
 
 class SQLiteDatabase(object):
