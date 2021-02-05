@@ -1,9 +1,9 @@
 import sqlite3
 import datetime as dt2
-from datetime import datetime
-
 import dateutil.parser
+from datetime import datetime
 import pytz
+
 from google.api_core.exceptions import Conflict, NotFound
 import google.cloud.bigquery as bigquery
 
@@ -23,8 +23,8 @@ class TyBot(object):
         """Initialize db class variables"""
         self.client = bigquery.Client(project=project_id)
         self.dataset_id = "{}.{}".format(self.client.project, db_name)
-        self.week_devs_performance = Config.WEEK_DEVS_PERFORMANCE_TABLE
         self.slack_client = SlackClient()
+
         try:
             dataset = bigquery.Dataset(self.dataset_id)
             dataset = self.client.create_dataset(
@@ -136,11 +136,20 @@ class TyBot(object):
         return users, issues
 
     def send_congrats_top5_performance_devs(self):
+        """Send a congratulations message to the top 5 most produtive developers of the 
+           engineer team in the last week."""
+
         query = f"""
-                    select * from `{self.dataset_id}.{self.week_devs_performance}` as week_dev_pf
-                    where week_dev_pf.index_date = CURRENT_DATE("UTC-5:00")
-                    order by week_dev_pf.avg_points desc
-                    limit 5
+                    SELECT
+                    *
+                    FROM
+                    `{self.dataset_id}.{Config.WEEK_DEVS_PERFORMANCE_TABLE}` AS week_dev_pf
+                    WHERE
+                    week_dev_pf.index_date = CURRENT_DATE("UTC-5:00")
+                    ORDER BY
+                    week_dev_pf.avg_points DESC
+                    LIMIT
+                    5
                 """
         query_job = self.client.query(query)
         for row in query_job:
@@ -152,15 +161,33 @@ class TyBot(object):
             self.slack_client.post_message_to_channel(channel=user['id'], message=congrats_messg)            
     
     def send_bad_issues_report(self):
+        """Report all the issues without story points to their respective owners"""
+
         query = f"""
-                select user.email, issue.story_points, issue.stage, 
-                       issue.priority, issue.issue_name, issue.project_name,
-                       issue.created_at, issue.updated_at, issue.index_date
-                from `{self.dataset_id}.Issue` as issue, `{self.dataset_id}.User` as user
-                where user.account_id = issue.assignee
-                and issue.story_points is NULL 
-                and (timestamp_diff(current_timestamp() , issue.created_at, DAY) <= 7
-                    or timestamp_diff(current_timestamp(), issue.updated_at, DAY) <= 7)
+                    SELECT
+                    user.email,
+                    issue.story_points,
+                    issue.stage,
+                    issue.priority,
+                    issue.issue_name,
+                    issue.project_name,
+                    issue.created_at,
+                    issue.updated_at,
+                    issue.index_date
+                    FROM
+                    `{self.dataset_id}.Issue` AS issue,
+                    `{self.dataset_id}.User` AS user
+                    WHERE
+                    user.account_id = issue.assignee
+                    AND issue.story_points IS NULL
+                    AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, HOUR) <= 24
+                    AND issue.updated_at IN (
+                        SELECT
+                            MAX(updated_at)
+                        FROM
+                            `{self.dataset_id}.Issue` AS issue
+                        GROUP BY
+                            issue.issue_name)
                  """
         query_job = self.client.query(query)
         bad_issues_by_user = {}
@@ -201,6 +228,36 @@ class TyBot(object):
             self.slack_client.post_message_to_channel(channel=user['id'], message=mssg)
 
 
+    def send_weekly_squads_performance(self):
+        query = f"""
+                    SELECT
+                    *
+                    FROM
+                    `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLES}` AS week_squad_pf
+                    WHERE
+                    week_squad_pf.index_date = CURRENT_DATE("UTC-5:00")
+                    ORDER BY
+                    week_squad_pf.avg_points DESC
+                 """
+        query_job = self.client.query(query)
+        for row in query_job: 
+            squad, avg_point, week_bugs = row[0], row[1], row[2]
+            mssg = f"""Rendimiento de {squad} en su última semana:\n
+                       Promedio de story points/día del equipo: {avg_point}\n
+                       Total de bugs en la semana: {week_bugs}\n"""
+            if squad == "Tyba professional":
+                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_PROFESSIONAL, message=mssg)
+            elif squad == "Banner - Tyba Digital Colombia":
+                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_BANNER, message=mssg)
+            elif squad == "Fury":
+                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_FURY, message=mssg)
+            elif squad == "Parker":
+                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_PARKER, message=mssg)
+            elif squad == "Robo":
+                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_ROBO, message=mssg)
+
+   #def send_weekly_tyba_performance(self, admin_emails: list):
+       
 
 class SQLiteDatabase(object):
     """sqlite3 database class that holds our data"""
