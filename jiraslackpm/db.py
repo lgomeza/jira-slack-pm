@@ -242,6 +242,14 @@ class TyBot(object):
                     ORDER BY
                     week_squad_pf.avg_points DESC
                  """
+        squad_params = {
+            "Tyba professional": Config.SLACK_SQUAD_TYBA_PROFESSIONAL,
+            "Banner - Tyba Digital Colombia": Config.SLACK_SQUAD_BANNER,
+            "Fury": Config.SLACK_SQUAD_FURY,
+            "Parker": Config.SLACK_SQUAD_PARKER,
+            "Robo": Config.SLACK_SQUAD_ROBO,
+            "Groot": Config.SLACK_SQUAD_GROOT,
+        }
         query_job = self.client.query(query)
         for row in query_job: 
             squad, avg_point, week_bugs = row[0], row[1], row[2]
@@ -249,21 +257,10 @@ class TyBot(object):
             mssg = f"""Hola :smile:, el rendimiento de {squad} en su última semana fue:\n
             - Promedio de story points/día del equipo: {avg_point}\n
             - Total de bugs en la semana: {week_bugs}\n"""
-            if squad == "Tyba professional":
-                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_PROFESSIONAL, message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
-            elif squad == "Banner - Tyba Digital Colombia":
-                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_BANNER, message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
-            elif squad == "Fury":
-                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_FURY, message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
-            elif squad == "Parker":
-                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_PARKER, message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
-            elif squad == "Robo":
-                self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_ROBO, message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
+
+            self.slack_client.post_message_to_channel(channel=squad_params[squad], message=mssg)
+            #self.slack_client.post_message_to_channel(channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+            
 
     def send_weekly_tyba_performance(self):
         query = f"""
@@ -272,7 +269,162 @@ class TyBot(object):
                 FROM
                 `{self.dataset_id}.{Config.WEEK_TYBA_PERFORMANCE_TABLE}` AS week_tyba_pf
                 WHERE
-                week_tyba_pf.index_date = CURRENT_DATE("UTC-5:00")-4
+                week_tyba_pf.index_date = CURRENT_DATE("UTC-5:00")
+                ORDER BY
+                week_tyba_pf.avg_points DESC
+                """
+        query_job = self.client.query(query)
+        for row in query_job:
+            print(row)
+            avg_point, week_bugs = row[0], row[1]
+            mssg = f"""¡Hola! :smile: Este es el reporte semanal de Tyba.\n
+            Esta semana el equipo completo tuvo una productividad de: {avg_point}.\n
+            Además, se subieron un total de {week_bugs} bugs en producción. ¡Feliz Semana!
+            """
+
+            self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
+
+
+
+
+
+
+
+
+    def send_performance_devs_test(self):
+        """Send a congratulations message to the top 5 most produtive developers of the 
+           engineer team in the last week."""
+
+        query = f"""
+                    SELECT
+                    *
+                    FROM
+                    `{self.dataset_id}.{Config.WEEK_DEVS_PERFORMANCE_TABLE}` AS week_dev_pf
+                    WHERE
+                    week_dev_pf.index_date = CURRENT_DATE("UTC-5:00")
+                    ORDER BY
+                    week_dev_pf.avg_points DESC
+                """
+        query_job = self.client.query(query)
+        for i, row in enumerate(query_job):
+            # Row values can be accessed by field name or index.
+            email, avg_points, week_bugs = row[2], row[3], row[4]
+            if email == "cristhian@tyba.com.co" or email == "orlando@tyba.com.co" or email=="salvador@tyba.com.co":
+                try:
+                    user = self.slack_client.get_user_by_email(email)
+                    print(f"Usuario actual: {email}")
+                    congrats_messg = ""
+                    if i < 5:
+                        # Send message to user
+                        congrats_messg += f"""Felicidades :smile:, has sido uno de los top 5 del
+                        equipo de ingeniería de Tyba esta semana :D, tus resultados son los siguientes:\n
+                        - Promedio story points/día: {round(avg_points, 2)} 
+                        - Bugs en producción en la semana: {week_bugs}\n"""
+                    else:
+                        congrats_messg += f"""Hola :slightly_smiling_face:, a continuación puedes encontrar los resultados de tu peformance en la última semana:\n
+                        - Promedio story points/día: {round(avg_points, 2)} 
+                        - Bugs en producción en la semana: {week_bugs}\n"""
+                        if avg_points < 0.1:
+                            congrats_messg += """Un promedio de puntos menor a 0.1 puede indicar que no terminaste issues esta semana (¡no hay presión! :slightly_smiling_face:) o que algunos de los issues que terminaste no tenían puntos asignados. ¡Recuerda asignar puntos a tus issues!"""
+                    self.slack_client.post_message_to_channel(channel=user['id'], message=congrats_messg) 
+                except Exception as exc:
+                    print("SlackApiError:", exc, "\nFallo en encontrar el correo: ", email)
+    
+    def send_bad_issues_report_test(self):
+        """Report all the issues without story points to their respective owners"""
+
+        query = f"""
+                    SELECT
+                    user.email,
+                    issue.story_points,
+                    issue.issue_name,
+                    issue.issue_summary,
+                    issue.priority,
+                    issue.created_at,
+                    issue.updated_at,
+                    issue.index_date
+                    FROM
+                    `{self.dataset_id}.Issue` AS issue,
+                    `{self.dataset_id}.User` AS user
+                    WHERE
+                    user.account_id = issue.assignee
+                    AND issue.story_points IS NULL
+                    AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, HOUR) <= 24
+                    AND issue.updated_at IN (
+                        SELECT
+                            MAX(updated_at)
+                        FROM
+                            `{self.dataset_id}.Issue` AS issue
+                        GROUP BY
+                            issue.issue_name)
+                 """
+        query_job = self.client.query(query)
+        bad_issues_by_user = {}
+        for row in query_job:
+            user_email = row[0]
+            
+            if bad_issues_by_user.get(user_email) == None:
+                bad_issues_by_user[user_email] = []
+            bad_issue_name = row[2]
+            bad_issue_summary = row[3]
+            bad_issue_priority = row[4]
+            new_bad_issue = {
+                                "name": bad_issue_name,
+                                "summary": bad_issue_summary,
+                                "priority": bad_issue_priority
+                            }
+            bad_issues_by_user[user_email].append(new_bad_issue)
+            
+        
+        for user_email in bad_issues_by_user:
+            if user_email == "cristhian@tyba.com.co" or user_email == "orlando@tyba.com.co" or user_email=="salvador@tyba.com.co":
+                mssg = f"Hola :cry:, encontramos los siguientes Issues asignados a tí sin story points, por favor révisalos para tenerlos en cuenta en tu performance semanal:\n"
+                for bad_issue in bad_issues_by_user[user_email]:
+                    mssg+= " - ID del Issue: " + bad_issue["name"] + "\n" 
+                    mssg+= " - Descripción: " + bad_issue["summary"] + "\n"
+                    mssg+= " - Prioridad: " +  bad_issue["priority"] + "\n \n"
+                user = self.slack_client.get_user_by_email(user_email)
+                self.slack_client.post_message_to_channel(channel=user['id'], message=mssg)
+
+    def send_weekly_squads_performance_test(self):
+        query = f"""
+                    SELECT
+                    *
+                    FROM
+                    `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLE}` AS week_squad_pf
+                    WHERE
+                    week_squad_pf.index_date = CURRENT_DATE("UTC-5:00")
+                    ORDER BY
+                    week_squad_pf.avg_points DESC
+                 """
+        query_job = self.client.query(query)
+        squad_params = {
+            "Tyba professional": Config.SLACK_SQUAD_TYBA_PROFESSIONAL,
+            "Banner - Tyba Digital Colombia": Config.SLACK_SQUAD_BANNER,
+            "Fury": Config.SLACK_SQUAD_FURY,
+            "Parker": Config.SLACK_SQUAD_PARKER,
+            "Robo": Config.SLACK_SQUAD_ROBO,
+            "Groot": Config.SLACK_SQUAD_GROOT,
+        }
+        for row in query_job: 
+            if squad == "Groot":
+                squad, avg_point, week_bugs = row[0], row[1], row[2]
+                print(squad)
+                mssg = f"""Hola :smile:, el rendimiento de {squad} en su última semana fue:\n
+                - Promedio de story points/día del equipo: {avg_point}\n
+                - Total de bugs en la semana: {week_bugs}\n"""
+
+                self.slack_client.post_message_to_channel(channel=squad_params[squad], message=mssg)
+                #self.slack_client.post_message_to_channel(channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+            
+    def send_weekly_tyba_performance_test(self):
+        query = f"""
+                SELECT
+                *
+                FROM
+                `{self.dataset_id}.{Config.WEEK_TYBA_PERFORMANCE_TABLE}` AS week_tyba_pf
+                WHERE
+                week_tyba_pf.index_date = CURRENT_DATE("UTC-5:00")
                 ORDER BY
                 week_tyba_pf.avg_points DESC
                 """
