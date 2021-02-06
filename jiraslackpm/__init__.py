@@ -1,10 +1,10 @@
 import jira
 import db
 import slack
-import pandas as pd
+
 def main():
     tybot = db.TyBot("k-ren-295903", "jira")
-    tybot.send_weekly_tyba_performance()
+    tybot.send_weekly_squads_performance()
 
     """
     slack_client = slack.SlackClient()
