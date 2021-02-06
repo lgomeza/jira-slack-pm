@@ -245,7 +245,7 @@ class TyBot(object):
             "Fury": Config.SLACK_SQUAD_FURY,
             "Parker": Config.SLACK_SQUAD_PARKER,
             "Robo": Config.SLACK_SQUAD_ROBO,
-            "Groot": Config.SLACK_TEST_CHANNEL,
+            "Groot": Config.SLACK_SQUAD_GROOT,
         }
         query_job = self.client.query(query)
         for row in query_job: 
@@ -401,10 +401,10 @@ class TyBot(object):
             "Fury": Config.SLACK_SQUAD_FURY,
             "Parker": Config.SLACK_SQUAD_PARKER,
             "Robo": Config.SLACK_SQUAD_ROBO,
-            "Groot": Config.SLACK_TEST_CHANNEL,
+            "Groot": Config.SLACK_SQUAD_GROOT,
         }
         for row in query_job: 
-            if squad = "Groot":
+            if squad == "Groot":
                 squad, avg_point, week_bugs = row[0], row[1], row[2]
                 print(squad)
                 mssg = f"""Hola :smile:, el rendimiento de {squad} en su última semana fue:\n
@@ -412,7 +412,7 @@ class TyBot(object):
                 - Total de bugs en la semana: {week_bugs}\n"""
 
                 self.slack_client.post_message_to_channel(channel=squad_params[squad], message=mssg)
-                #self.slack_client.post_message_to_channel(channel="C01M537JT8A", message=mssg)
+                #self.slack_client.post_message_to_channel(channel=Config.SLACK_TEST_CHANNEL, message=mssg)
             
     def send_weekly_tyba_performance_test(self):
         query = f"""
