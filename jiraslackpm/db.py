@@ -135,6 +135,9 @@ class TyBot(object):
             issues = self.create_table(issues_table_name, issues_schema)
         return users, issues
 
+    # -------------------------
+    # Slack tybot reports
+    # -------------------------
     def send_performance_devs(self):
         """Send a congratulations message to the top 5 most produtive developers of the 
            engineer team in the last week."""
@@ -160,7 +163,7 @@ class TyBot(object):
                 if i < 5:
                     # Send message to user
                     congrats_messg += f"""Felicidades :smile:, has sido uno de los top 5 del
-                    equipo de ingeniería de Tyba esta semana :D, tus resultados son los siguientes:\n
+                    equipo de ingeniería de Tyba esta semana :D, tus resultados son los siguientes:
                     - Promedio story points/día: {round(avg_points, 2)} 
                     - Bugs tuyos en la semana: {week_bugs}\n"""
                 else:
@@ -284,42 +287,6 @@ class TyBot(object):
 
             self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
 
-       
-
-class SQLiteDatabase(object):
-    """sqlite3 database class that holds our data"""
-
-    def __init__(self, db_name):
-        """Initialize db class variables"""
-        self.connection = sqlite3.connect(db_name)
-        self.cursor = self.connection.cursor()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, ext_type, exc_value, traceback):
-        self.cursor.close()
-        if isinstance(exc_value, Exception):
-            self.connection.rollback()
-        else:
-            self.connection.commit()
-        self.connection.close()
-
-    def __del__(self):
-        self.connection.close()
-
-    def close(self):
-        self.connection.close()
-
-    def execute(self, sql):
-        self.cursor.execute(sql)
-
-    def drop_table(self, table_name):
-        self.cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
-
-    def commit(self):
-        """commit changes to database"""
-        self.connection.commit()
 
 def load_users_into_bigquery(project_id, database_name):
     with TyBot(project_id, database_name) as db:
