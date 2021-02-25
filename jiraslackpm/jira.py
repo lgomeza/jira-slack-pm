@@ -91,6 +91,11 @@ def get_sp_brute_force(fields: dict, is_custom_field=False) -> Optional[int]:
 
 
 def get_info_from_issue(issue: dict) -> dict:
+
+    project_name = s_get(issue, "fields.project.name")
+    if project_name == "Tyba":
+        project_name = s_get(issue, "fields.components[0].name")
+
     return {
         "story_points": get_sp_brute_force(
             issue.get("fields", {}), is_custom_field=True
@@ -100,11 +105,12 @@ def get_info_from_issue(issue: dict) -> dict:
         "priority": s_get(issue, "fields.priority.name"),
         "issue_id": issue.get("id"),
         "issue_name": issue.get("key"),
-        "project_name": s_get(issue, "fields.project.name"),
+        "project_name": project_name,
         "issue_summary": s_get(issue, "fields.summary"),
         "creator": s_get(issue, "fields.creator.accountId"),
         "reporter": s_get(issue, "fields.reporter.accountId"),
         "created_at": str(dateutil.parser.parse(s_get(issue, "fields.created"))),
         "updated_at": str(dateutil.parser.parse(s_get(issue, "fields.updated"))),
         "issue_type": s_get(issue, "fields.issuetype.name"),
+        "tester": s_get(issue, "fields.customfield_10050[0].emailAddress"),
     }
