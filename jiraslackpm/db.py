@@ -9,8 +9,9 @@ import google.cloud.bigquery as bigquery
 
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user
 from utils import get_users_info
-from slack import SlackClient
+from slack_connect import SlackClient
 from config import Config
+
 
 class TyBot(object):
     """
@@ -84,53 +85,62 @@ class TyBot(object):
     def initialize_tables(
         self, users_table_name: str = "User", issues_table_name: str = "Issue"
     ):
-        #ids to check the tables existence
+        # ids to check the tables existence
         issues_table_id = "{}.{}".format(self.dataset_id, issues_table_name)
         users_table_id = "{}.{}".format(self.dataset_id, users_table_name)
 
-        #if the user table does exist, it doesn't have to be initialized again.
+        # if the user table does exist, it doesn't have to be initialized again.
         try:
             self.client.get_table(users_table_id)
             users = "Users are already uploaded"
-        
-        #if it doesn't exist, it has to be created with the following schema.
+
+        # if it doesn't exist, it has to be created with the following schema.
         except NotFound:
             self.delete_table(users_table_name)
             users_schema = [
                 bigquery.SchemaField("account_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("account_type", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "account_type", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("active", "BOOL", mode="REQUIRED"),
-                bigquery.SchemaField("display_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("index_date", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "display_name", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "index_date", "TIMESTAMP", mode="REQUIRED"),
                 bigquery.SchemaField("email", "STRING", mode="NULLABLE"),
             ]
             print("Initializing users table...")
             users = self.create_table(users_table_name, users_schema)
-        
-        ##if the user table does exist, it doesn't have to be initialized again.
+
+        # if the user table does exist, it doesn't have to be initialized again.
         try:
-            self.client.get_table(issues_table_id) 
+            self.client.get_table(issues_table_id)
             issues = "Ready to upload new or updated issues for yesterday"
 
-        #if it doesn't exist, it has to be created with the following schema.
+        # if it doesn't exist, it has to be created with the following schema.
         except NotFound:
             issues_schema = [
-                bigquery.SchemaField("story_points", "NUMERIC", mode="NULLABLE"),
+                bigquery.SchemaField(
+                    "story_points", "NUMERIC", mode="NULLABLE"),
                 bigquery.SchemaField("status", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("stage", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("priority", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("issue_id", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("issue_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("project_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("issue_summary", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "project_name", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "issue_summary", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("creator", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("reporter", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("assignee", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("tester", "STRING", mode="NULLABLE"),
                 bigquery.SchemaField("issue_type", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
-                bigquery.SchemaField("updated_at", "TIMESTAMP", mode="REQUIRED"),
-                bigquery.SchemaField("index_date", "TIMESTAMP", mode="REQUIRED")
+                bigquery.SchemaField(
+                    "created_at", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "updated_at", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "index_date", "TIMESTAMP", mode="REQUIRED")
             ]
             print("Initializing issues table...")
             issues = self.create_table(issues_table_name, issues_schema)
@@ -158,7 +168,8 @@ class TyBot(object):
             # Row values can be accessed by field name or index.
             email, avg_points, week_bugs = row[2], row[3], row[4]
             try:
-                user = self.slack_client.get_user_by_email("luisgomez@tyba.com.co")
+                user = self.slack_client.get_user_by_email(
+                    "luisgomez@tyba.com.co")
                 print(f"Usuario actual: {email}")
                 congrats_messg = ""
                 if i < 5:
@@ -173,10 +184,12 @@ class TyBot(object):
                     - Bugs tuyos en la semana: {week_bugs}\n"""
                     if avg_points < 0.1:
                         congrats_messg += """Un promedio de puntos menor a 0.1 puede indicar que no terminaste issues esta semana (¡no hay presión! :D) o que algunos de los issues que terminaste no tenían puntos asignados. ¡Recuerda asignar puntos a tus issues!"""
-                self.slack_client.post_message_to_channel(channel=user['id'], message=congrats_messg) 
+                self.slack_client.post_message_to_channel(
+                    channel=user['id'], message=congrats_messg)
             except Exception as exc:
-                print("SlackApiError:", exc, "\nFallo en encontrar el correo: ", email)
-    
+                print("SlackApiError:", exc,
+                      "\nFallo en encontrar el correo: ", email)
+
     def send_bad_issues_report(self):
         """Report all the issues without story points to their respective owners"""
 
@@ -211,29 +224,29 @@ class TyBot(object):
         bad_issues_by_user = {}
         for row in query_job:
             user_email = row[0]
-            
+
             if bad_issues_by_user.get(user_email) == None:
                 bad_issues_by_user[user_email] = []
             bad_issue_name = row[2]
             bad_issue_summary = row[3]
             bad_issue_priority = row[4]
             new_bad_issue = {
-                                "name": bad_issue_name,
-                                "summary": bad_issue_summary,
-                                "priority": bad_issue_priority
-                            }
+                "name": bad_issue_name,
+                "summary": bad_issue_summary,
+                "priority": bad_issue_priority
+            }
             bad_issues_by_user[user_email].append(new_bad_issue)
-            
-        
+
         for user_email in bad_issues_by_user:
             mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
             Encontré algunos Issues asignados a tí sin story points :cry:, ¡por favor révisalos y agrégales los puntos para tenerlos en cuenta en el cálculo de performance!:\n"""
             for bad_issue in bad_issues_by_user[user_email]:
-                mssg+= " - ID del Issue: " + bad_issue["name"] + "\n" 
-                mssg+= " - Descripción: " + bad_issue["summary"] + "\n"
-                mssg+= " - Prioridad: " +  bad_issue["priority"] + "\n \n"
+                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
+                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
+                mssg += " - Prioridad: " + bad_issue["priority"] + "\n \n"
             user = self.slack_client.get_user_by_email(user_email)
-            self.slack_client.post_message_to_channel(channel=user['id'], message=mssg)
+            self.slack_client.post_message_to_channel(
+                channel=user['id'], message=mssg)
 
     def send_weekly_squads_performance(self):
         query = f"""
@@ -257,23 +270,24 @@ class TyBot(object):
             "Stark": Config.SLACK_SQUAD_STARK,
         }
         query_job = self.client.query(query)
-        for row in query_job: 
+        for row in query_job:
             squad, avg_point, week_bugs = row[0], row[1], row[2]
             print(squad)
             mssg = f"""Hola :smile:, el rendimiento de {squad} en su última semana fue:\n
             - Promedio de story points/día del equipo: {avg_point}\n
             - Total de bugs en la semana: {week_bugs}\n"""
 
-            self.slack_client.post_message_to_channel(channel=squad_params[squad], message=mssg)
+            self.slack_client.post_message_to_channel(
+                channel=squad_params[squad], message=mssg)
             if(week_bugs > 0):
                 bugs_detail = get_weekly_squads_bug_detail(squad)
                 mssg = f"""Este es un resumen de los bugs en producción de la semana:\n"""
-                for row in bugs_detail: 
+                for row in bugs_detail:
                     summary, issue_id, project_name, assignee = row[0], row[1], row[2], row[3]
                     mssg += f"""{issue_id} - {summary}: \n
                     - Persona asignada: {assignee} \n \n"""
-                self.slack_client.post_message_to_channel(channel=squad_params[squad], message=mssg)
-            
+                self.slack_client.post_message_to_channel(
+                    channel=squad_params[squad], message=mssg)
 
     def send_weekly_tyba_performance(self):
         query = f"""
@@ -297,9 +311,8 @@ class TyBot(object):
             _*Se considera terminado un issue cuando llega a dev_
             """
 
-            self.slack_client.post_message_to_channel(channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
-
-    
+            self.slack_client.post_message_to_channel(
+                channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
 
     def get_weekly_squads_bug_detail(self, squad_name):
         query = f"""
@@ -335,19 +348,22 @@ def load_users_into_bigquery(project_id, database_name):
     with TyBot(project_id, database_name) as db:
         db.delete_table("User")
         users_table_id = "{}.{}".format(db.dataset_id, "User")
-        #if the user table does exist, it doesn't have to be initialized again.
+        # if the user table does exist, it doesn't have to be initialized again.
         try:
             db.client.get_table(users_table_id)
             users = "Users are already uploaded"
-    
-        #if it doesn't exist, it has to be created with the following schema.
+
+        # if it doesn't exist, it has to be created with the following schema.
         except NotFound:
             users_schema = [
                 bigquery.SchemaField("account_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("account_type", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "account_type", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("active", "BOOL", mode="REQUIRED"),
-                bigquery.SchemaField("display_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("index_date", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "display_name", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "index_date", "TIMESTAMP", mode="REQUIRED"),
                 bigquery.SchemaField("email", "STRING", mode="NULLABLE"),
             ]
             print("Initializing users table...")
@@ -356,7 +372,7 @@ def load_users_into_bigquery(project_id, database_name):
             info_users = get_users_info()
             u = datetime.utcnow()
             now = u.replace(tzinfo=pytz.timezone("America/Bogota"))
-        
+
         for user in users:
             if user["accountType"] == "atlassian" and user['active'] == True:
                 db.insert_records(
@@ -371,9 +387,10 @@ def load_users_into_bigquery(project_id, database_name):
                             "email": info_users[info_users['id'] == user["accountId"]]['email'].iloc[0],
                         }
                     ],
-                    )
-                print("Inserted user with ID {} and name {}".format(user["accountId"], user["displayName"]))
-                
+                )
+                print("Inserted user with ID {} and name {}".format(
+                    user["accountId"], user["displayName"]))
+
 
 def load_new_issues_into_bigquery(project_id, database_name):
     with TyBot(project_id, database_name) as db:
@@ -383,7 +400,7 @@ def load_new_issues_into_bigquery(project_id, database_name):
         u = datetime.utcnow()
         now = u.replace(tzinfo=pytz.timezone("America/Bogota"))
         for user in users:
-            
+
             if user["accountType"] == "atlassian":
 
                 issues = get_all_issues_by_user(user["accountId"])
@@ -392,12 +409,15 @@ def load_new_issues_into_bigquery(project_id, database_name):
                     parsed_issue = get_info_from_issue(issue)
                     parsed_issue["assignee"] = user["accountId"]
                     parsed_issue["index_date"] = str(now)
-                    created_date = dateutil.parser.parse(parsed_issue["created_at"])
-                    updated_date = dateutil.parser.parse(parsed_issue["updated_at"])
+                    created_date = dateutil.parser.parse(
+                        parsed_issue["created_at"])
+                    updated_date = dateutil.parser.parse(
+                        parsed_issue["updated_at"])
+
                     last_day_date = now - dt2.timedelta(1)
                     if created_date > last_day_date or updated_date > last_day_date:
                         records.append(parsed_issue)
-                        
+
                 if records:
                     db.insert_records("Issue", records)
                 print(
@@ -411,4 +431,3 @@ def load_new_issues_into_bigquery(project_id, database_name):
                         user["accountId"], user["accountType"]
                     )
                 )
-

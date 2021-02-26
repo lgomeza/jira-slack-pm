@@ -5,11 +5,12 @@ import dateutil.parser
 import requests
 from pydash import get as s_get
 from requests.auth import HTTPBasicAuth
+from config import Config
 
 from utils import print_json
 
-api_token = os.environ["JIRA_API_TOKEN"]
-AUTH = HTTPBasicAuth(os.environ["JIRA_API_EMAIL"], api_token)
+api_token = Config.JIRA_API_TOKEN
+AUTH = HTTPBasicAuth(Config.JIRA_API_EMAIL, api_token)
 HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
 PARAMS = {}
 BASE_URL = "https://starkmvp.atlassian.net/rest/api/3/"
@@ -20,7 +21,8 @@ def call_api(uri: str, method="GET", headers=None, auth=AUTH, params=None) -> di
         params = PARAMS
     if headers is None:
         headers = HEADERS
-    response = requests.request(method, uri, headers=headers, params=params, auth=auth)
+    response = requests.request(
+        method, uri, headers=headers, params=params, auth=auth)
     return response.json()
 
 
@@ -96,6 +98,11 @@ def get_info_from_issue(issue: dict) -> dict:
     if project_name == "Tyba":
         project_name = s_get(issue, "fields.components[0].name")
 
+    sprint = s_get(issue, "fields.customfield_10021")
+    most_recent_sprint_state = None
+    if sprint:
+        most_recent_sprint = sprint[len(sprint) - 1]["state"]
+
     return {
         "story_points": get_sp_brute_force(
             issue.get("fields", {}), is_custom_field=True
@@ -113,4 +120,4 @@ def get_info_from_issue(issue: dict) -> dict:
         "updated_at": str(dateutil.parser.parse(s_get(issue, "fields.updated"))),
         "issue_type": s_get(issue, "fields.issuetype.name"),
         "tester": s_get(issue, "fields.customfield_10050[0].emailAddress"),
-    }
+        "sprint_status": most_recent_sprint}
