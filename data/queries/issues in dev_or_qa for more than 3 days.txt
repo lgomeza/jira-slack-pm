@@ -1,0 +1,76 @@
+SELECT *
+FROM (SELECT
+  issue.issue_name,
+  processed.open_date,
+  processed.closed_date,
+  issue.created_at,
+  issue.stage,
+  MIN(issue.updated_at) AS first_appearance,
+  user.email,
+  DATE_DIFF(CURRENT_DATE("UTC-5:00"), DATE(MIN(issue.updated_at), "UTC-5:00"), DAY) AS days_in_stage
+FROM (
+  SELECT
+    active.issue_id,
+    open_date,
+    closed_date
+  FROM (
+    /*Find the closest closing date of the sprint where the issue was for the last time*/
+    SELECT
+      issue_id,
+      MAX(updated_at) AS closed_date
+    FROM
+      `k-ren-295903.jira.Issue`
+    WHERE
+      sprint_status = "closed"
+    GROUP BY
+      issue_id) AS closed
+  RIGHT OUTER JOIN (
+    /*Find the most recent opening date of the sprint where the issue was for the last time*/
+    SELECT
+      issue_id,
+      MAX(updated_at) AS open_date
+    FROM
+      `k-ren-295903.jira.Issue`
+    WHERE
+      sprint_status = "active"
+    GROUP BY
+      issue_id) AS active
+  ON
+    active.issue_id = closed.issue_id
+  WHERE
+  /*If the most recent open date is over the most recent closed date, it means the issue is active in a sprint*/
+    closed_date IS NULL
+    OR open_date > closed_date) AS processed,
+  `k-ren-295903.jira.Issue` AS issue,
+  `k-ren-295903.jira.User` AS user
+WHERE
+  issue.issue_id = processed.issue_id
+  /*If it is still in DEV, it shouldn't have a register in QA or DONE*/
+  AND ((issue.stage = "ENV: DEV"
+      AND processed.issue_id NOT IN (
+      SELECT
+        issue_id
+      FROM
+        `k-ren-295903.jira.Issue`
+      WHERE
+        stage = "Finalizada"
+        OR stage = "ENV: QA"))
+        /*If it is still in QA, it shouldn't have a register in DONE*/
+    OR (issue.stage = "ENV: QA"
+      AND processed.issue_id NOT IN (
+      SELECT
+        issue_id
+      FROM
+        `k-ren-295903.jira.Issue`
+      WHERE
+        stage = "Finalizada")))
+  AND issue.issue_type != "Error"
+  AND user.account_id = issue.assignee
+GROUP BY
+  issue.issue_name,
+  issue.created_at,
+  issue.stage,
+  processed.open_date,
+  processed.closed_date,
+  user.email) AS result
+WHERE result.days_in_stage > 3
