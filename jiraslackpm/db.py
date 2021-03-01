@@ -249,56 +249,56 @@ class TyBot(object):
                 channel=user['id'], message=mssg)
 
         def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
-        """Report all the issues without in QA without tester to their respective owners"""
+            """Report all the issues without in QA without tester to their respective owners"""
 
-        query = f"""
-                    SELECT user.email, issue.issue_name, issue.issue_summary
-                    FROM (SELECT
-                      issue_id,
-                      issue_name,
-                      MAX(updated_at) AS last_update
-                    FROM
-                      `k-ren-295903.jira.Issue`
-                    GROUP BY
-                      issue_id, issue_name) AS issues_last_update,
-                      `k-ren-295903.jira.Issue` AS issue,
-                      `k-ren-295903.jira.User` AS user
-                      WHERE issue.issue_id = issues_last_update.issue_id
-                      AND issue.issue_name = issues_last_update.issue_name
-                      AND issue.updated_at = issues_last_update.last_update
-                      AND issue.assignee = user.account_id
-                      AND issue.sprint_status = "active"
-                      AND issue.stage = "ENV: QA"
-                      AND issue.tester IS NULL
-                 """
-        query_job = self.client.query(query)
-        bad_issues_by_user = {}
-        for row in query_job:
-            user_email = row[0]
+            query = f"""
+                        SELECT user.email, issue.issue_name, issue.issue_summary
+                        FROM (SELECT
+                        issue_id,
+                        issue_name,
+                        MAX(updated_at) AS last_update
+                        FROM
+                        `k-ren-295903.jira.Issue`
+                        GROUP BY
+                        issue_id, issue_name) AS issues_last_update,
+                        `k-ren-295903.jira.Issue` AS issue,
+                        `k-ren-295903.jira.User` AS user
+                        WHERE issue.issue_id = issues_last_update.issue_id
+                        AND issue.issue_name = issues_last_update.issue_name
+                        AND issue.updated_at = issues_last_update.last_update
+                        AND issue.assignee = user.account_id
+                        AND issue.sprint_status = "active"
+                        AND issue.stage = "ENV: QA"
+                        AND issue.tester IS NULL
+                    """
+            query_job = self.client.query(query)
+            bad_issues_by_user = {}
+            for row in query_job:
+                user_email = row[0]
 
-            if bad_issues_by_user.get(user_email) == None:
-                bad_issues_by_user[user_email] = []
-            bad_issue_name = row[1]
-            bad_issue_summary = row[2]
-            new_bad_issue = {
-                "name": bad_issue_name,
-                "summary": bad_issue_summary
-            }
-            bad_issues_by_user[user_email].append(new_bad_issue)
+                if bad_issues_by_user.get(user_email) == None:
+                    bad_issues_by_user[user_email] = []
+                bad_issue_name = row[1]
+                bad_issue_summary = row[2]
+                new_bad_issue = {
+                    "name": bad_issue_name,
+                    "summary": bad_issue_summary
+                }
+                bad_issues_by_user[user_email].append(new_bad_issue)
 
-        for user_email in bad_issues_by_user:
-            if(user_email in users_with_previous_bad_issues):
-                mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            else:
-                mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
-               Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            for bad_issue in bad_issues_by_user[user_email]:
-                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
-                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
-            user = self.slack_client.get_user_by_email(user_email)
-            self.slack_client.post_message_to_channel(
-                channel=user['id'], message=mssg)
-        send_issues_qa_no_tester_report(bad_issues_by_user)
+            for user_email in bad_issues_by_user:
+                if(user_email in users_with_previous_bad_issues):
+                    mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+                else:
+                    mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
+                Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+                for bad_issue in bad_issues_by_user[user_email]:
+                    mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
+                    mssg += " - Descripción: " + bad_issue["summary"] + "\n"
+                user = self.slack_client.get_user_by_email(user_email)
+                self.slack_client.post_message_to_channel(
+                    channel=user['id'], message=mssg)
+            send_issues_qa_no_tester_report(bad_issues_by_user)
 
     def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
         """Report all the issues without in QA without tester to their respective owners"""
