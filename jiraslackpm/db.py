@@ -343,6 +343,9 @@ class TyBot(object):
                     """
         return self.client.query(query)
 
+# -------------
+# End of tybot
+# -------------
 
 def load_users_into_bigquery(project_id, database_name):
     with TyBot(project_id, database_name) as db:
