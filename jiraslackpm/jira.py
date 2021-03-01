@@ -96,12 +96,19 @@ def get_info_from_issue(issue: dict) -> dict:
 
     project_name = s_get(issue, "fields.project.name")
     if project_name == "Tyba":
-        project_name = s_get(issue, "fields.components[0].name")
+        project = s_get(issue, "fields.components")
+        if len(project) > 0:
+            project_name = project[0]["name"]
 
     sprint = s_get(issue, "fields.customfield_10021")
     most_recent_sprint_state = None
-    if sprint:
-        most_recent_sprint = sprint[len(sprint) - 1]["state"]
+    if sprint and len(sprint) > 0:
+        most_recent_sprint_state = sprint[len(sprint) - 1]["state"]
+
+    tester = s_get(issue, "fields.customfield_10050")
+    tester_mail = None
+    if tester:
+        tester_mail = tester[0]["accountId"]
 
     return {
         "story_points": get_sp_brute_force(
@@ -119,5 +126,5 @@ def get_info_from_issue(issue: dict) -> dict:
         "created_at": str(dateutil.parser.parse(s_get(issue, "fields.created"))),
         "updated_at": str(dateutil.parser.parse(s_get(issue, "fields.updated"))),
         "issue_type": s_get(issue, "fields.issuetype.name"),
-        "tester": s_get(issue, "fields.customfield_10050[0].emailAddress"),
-        "sprint_status": most_recent_sprint}
+        "tester": tester_mail,
+        "sprint_status": most_recent_sprint_state}

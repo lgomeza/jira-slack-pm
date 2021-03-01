@@ -1,33 +1,18 @@
-SELECT
-  issue.assignee,
-  user.display_name,
-  user.email,
-  issue.issue_name,
-  issue.issue_summary
-FROM (
-  SELECT
-    issue_summary,
-    issue_name,
-    MAX(updated_at) AS updated_at
-  FROM
-    `k-ren-295903.jira.Issue`
-  WHERE
-    DATE(updated_at)>=CURRENT_DATE("UTC-5:00")-1
-    AND stage = "ENV: QA"
-    AND issue_id NOT IN (
-    SELECT
-      issue_id
-    FROM
-      `k-ren-295903.jira.Issue`
-    WHERE
-      stage = "Finalizada")
-    AND tester IS NULL
-  GROUP BY
-    issue_summary,
-    issue_name) AS processed,
+SELECT issue.issue_name, issue.issue_summary, user.email
+FROM (SELECT
+  issue_id,
+  issue_name,
+  MAX(updated_at) AS last_update
+FROM
+  `k-ren-295903.jira.Issue`
+GROUP BY
+  issue_id, issue_name) AS issues_last_update,
   `k-ren-295903.jira.Issue` AS issue,
   `k-ren-295903.jira.User` AS user
-WHERE
-  processed.updated_at = issue.updated_at
+  WHERE issue.issue_id = issues_last_update.issue_id
+  AND issue.issue_name = issues_last_update.issue_name
+  AND issue.updated_at = issues_last_update.last_update
   AND issue.assignee = user.account_id
-  AND processed.issue_name = issue.issue_name
+  AND issue.sprint_status = "active" 
+  AND issue.stage = "ENV: QA"
+  AND issue.tester IS NULL
