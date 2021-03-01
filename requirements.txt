@@ -7,3 +7,7 @@ typing>=3.7.4
 google-api-core>=1.25.1
 google-cloud-bigquery>=2.7.0
 slack-sdk>=3.3.0
+python-dotenv==0.15.0
+pandas==1.2.2
+
+

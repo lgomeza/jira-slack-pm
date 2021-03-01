@@ -5,7 +5,9 @@ from datetime import datetime
 import pytz
 
 from google.api_core.exceptions import Conflict, NotFound
+from google.cloud import bigquery_storage
 import google.cloud.bigquery as bigquery
+import google.auth
 
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user
 from utils import get_users_info
@@ -24,6 +26,8 @@ class TyBot(object):
         """Initialize db class variables"""
         self.client = bigquery.Client(project=project_id)
         self.dataset_id = "{}.{}".format(self.client.project, db_name)
+        credentials, your_project_id = google.auth.default()
+        self.bqstorageclient = bigquery_storage.BigQueryReadClient(credentials=credentials)
         self.slack_client = SlackClient()
 
         try:
@@ -248,57 +252,57 @@ class TyBot(object):
             self.slack_client.post_message_to_channel(
                 channel=user['id'], message=mssg)
 
-        def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
-            """Report all the issues without in QA without tester to their respective owners"""
+    def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
+        """Report all the issues without in QA without tester to their respective owners"""
 
-            query = f"""
-                        SELECT user.email, issue.issue_name, issue.issue_summary
-                        FROM (SELECT
-                        issue_id,
-                        issue_name,
-                        MAX(updated_at) AS last_update
-                        FROM
-                        `k-ren-295903.jira.Issue`
-                        GROUP BY
-                        issue_id, issue_name) AS issues_last_update,
-                        `k-ren-295903.jira.Issue` AS issue,
-                        `k-ren-295903.jira.User` AS user
-                        WHERE issue.issue_id = issues_last_update.issue_id
-                        AND issue.issue_name = issues_last_update.issue_name
-                        AND issue.updated_at = issues_last_update.last_update
-                        AND issue.assignee = user.account_id
-                        AND issue.sprint_status = "active"
-                        AND issue.stage = "ENV: QA"
-                        AND issue.tester IS NULL
-                    """
-            query_job = self.client.query(query)
-            bad_issues_by_user = {}
-            for row in query_job:
-                user_email = row[0]
+        query = f"""
+                    SELECT user.email, issue.issue_name, issue.issue_summary
+                    FROM (SELECT
+                    issue_id,
+                    issue_name,
+                    MAX(updated_at) AS last_update
+                    FROM
+                    `{self.dataset_id}.Issue`
+                    GROUP BY
+                    issue_id, issue_name) AS issues_last_update,
+                    `{self.dataset_id}.Issue` AS issue,
+                    `{self.dataset_id}.User` AS user
+                    WHERE issue.issue_id = issues_last_update.issue_id
+                    AND issue.issue_name = issues_last_update.issue_name
+                    AND issue.updated_at = issues_last_update.last_update
+                    AND issue.assignee = user.account_id
+                    AND issue.sprint_status = "active"
+                    AND issue.stage = "ENV: QA"
+                    AND issue.tester IS NULL
+                """
+        query_job = self.client.query(query)
+        bad_issues_by_user = {}
+        for row in query_job:
+            user_email = row[0]
 
-                if bad_issues_by_user.get(user_email) == None:
-                    bad_issues_by_user[user_email] = []
-                bad_issue_name = row[1]
-                bad_issue_summary = row[2]
-                new_bad_issue = {
-                    "name": bad_issue_name,
-                    "summary": bad_issue_summary
-                }
-                bad_issues_by_user[user_email].append(new_bad_issue)
+            if bad_issues_by_user.get(user_email) == None:
+                bad_issues_by_user[user_email] = []
+            bad_issue_name = row[1]
+            bad_issue_summary = row[2]
+            new_bad_issue = {
+                "name": bad_issue_name,
+                "summary": bad_issue_summary
+            }
+            bad_issues_by_user[user_email].append(new_bad_issue)
 
-            for user_email in bad_issues_by_user:
-                if(user_email in users_with_previous_bad_issues):
-                    mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-                else:
-                    mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
-                Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-                for bad_issue in bad_issues_by_user[user_email]:
-                    mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
-                    mssg += " - Descripción: " + bad_issue["summary"] + "\n"
-                user = self.slack_client.get_user_by_email(user_email)
-                self.slack_client.post_message_to_channel(
-                    channel=user['id'], message=mssg)
-            send_issues_qa_no_tester_report(bad_issues_by_user)
+        for user_email in bad_issues_by_user:
+            if(user_email in users_with_previous_bad_issues):
+                mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+            else:
+                mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
+            Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+            for bad_issue in bad_issues_by_user[user_email]:
+                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
+                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
+            user = self.slack_client.get_user_by_email(user_email)
+            self.slack_client.post_message_to_channel(
+                channel=user['id'], message=mssg)
+        send_issues_qa_no_tester_report(bad_issues_by_user)
 
     def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
         """Report all the issues without in QA without tester to their respective owners"""
@@ -310,11 +314,11 @@ class TyBot(object):
                       issue_name,
                       MAX(updated_at) AS last_update
                     FROM
-                      `k-ren-295903.jira.Issue`
+                      `{self.dataset_id}.Issue`
                     GROUP BY
                       issue_id, issue_name) AS issues_last_update,
-                      `k-ren-295903.jira.Issue` AS issue,
-                      `k-ren-295903.jira.User` AS user
+                      `{self.dataset_id}.Issue` AS issue,
+                      `{self.dataset_id}.User` AS user
                       WHERE issue.issue_id = issues_last_update.issue_id
                       AND issue.issue_name = issues_last_update.issue_name
                       AND issue.updated_at = issues_last_update.last_update
@@ -384,11 +388,13 @@ class TyBot(object):
                 channel=squad_params[squad], message=mssg)
             if(week_bugs > 0):
                 bugs_detail = get_weekly_squads_bug_detail(squad)
+                bugs_percentage = weekly_percentage_bugs_report(squad=squad)
                 mssg = f"""Este es un resumen de los bugs en producción de la semana:\n"""
                 for row in bugs_detail:
                     summary, issue_id, project_name, assignee = row[0], row[1], row[2], row[3]
                     mssg += f"""{issue_id} - {summary}: \n
                     - Persona asignada: {assignee} \n \n"""
+                mssg += bugs_percentage
                 self.slack_client.post_message_to_channel(
                     channel=squad_params[squad], message=mssg)
 
@@ -413,6 +419,7 @@ class TyBot(object):
             _*La productividad se calcula como story points/tiempo de resolución en días de los issues terminados en el transcurso de la semana._
             _*Se considera terminado un issue cuando llega a dev_
             """
+            mssg += weekly_percentage_bugs_report()
 
             self.slack_client.post_message_to_channel(
                 channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
@@ -430,7 +437,7 @@ class TyBot(object):
                              issue_name,
                              MAX(updated_at) AS updated_at
                            FROM
-                             `k-ren-295903.jira.Issue`
+                             `{self.dataset_id}.Issue`
                            WHERE
                              DATE(created_at)>=CURRENT_DATE("UTC-5:00")-14
                              AND issue_type = "Error"
@@ -438,13 +445,59 @@ class TyBot(object):
                            GROUP BY
                              issue_summary,
                              issue_name) AS processed,
-                          `k-ren-295903.jira.Issue` AS issue
+                          `{self.dataset_id}.Issue` AS issue
                          WHERE
                            issue.issue_name = processed.issue_name
                            AND issue.updated_at = processed.updated_at
                            AND issue.project_name = {squad_name}
                     """
         return self.client.query(query)
+
+    def weekly_percentage_bugs_report(self, squad=None):
+        query = ""
+        if squad == None:
+            query = f"""
+                    SELECT
+                    *
+                    FROM
+                        `{self.dataset_id}.{Config.WEEK_TYBA_PERFORMANCE_TABLE}`
+                    ORDER BY
+                        index_date DESC
+                    LIMIT 2;
+                    """
+        else:
+            query = f"""
+                    SELECT
+                    *
+                    FROM
+                        `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLE}`
+                    WHERE
+                        project_name = '{squad}'
+                    ORDER BY
+                        index_date DESC
+                    LIMIT 2;
+                    """
+            
+        dataframe = (self.client.query(query)
+                    .result()
+                    .to_dataframe(bqstorage_client=self.bqstorageclient)
+                    )
+        current_week_bugs = dataframe['week_bugs'].iloc[0]
+        last_week_bugs = dataframe['week_bugs'].iloc[1]
+
+        mssg = ""
+        if last_week_bugs != 0 and current_week_bugs > last_week_bugs:
+            increase_bugs_percentage = round(((current_week_bugs/last_week_bugs)-1),2)*100
+            mssg = f"Los bugs esta semana aumentaron: {increase_bugs_percentage}%"
+        elif last_week_bugs != 0 and current_week_bugs < last_week_bugs:
+            decrease_bugs_percentage = round(((current_week_bugs/last_week_bugs)-1),2)*100
+            mssg = f"Los bugs esta semana disminuyeron: {increase_bugs_percentage}%"
+        elif last_week_bugs != 0 and current_week_bugs == last_week_bugs: 
+            mssg = f"Los bugs esta semana se mantuvieron iguales"
+        elif last_week_bugs == 0 and current_week_bugs > 0:
+            mssg = f"Esta semana hubo un aumento de {current_week_bugs} respecto a ningun bug la semana pasada"
+        
+        return mssg
 
 # -------------
 # End of tybot
