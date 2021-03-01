@@ -384,17 +384,26 @@ class TyBot(object):
             - Promedio de story points/día del equipo: {avg_point}\n
             - Total de bugs en la semana: {week_bugs}\n"""
 
+            bugs_percentage = self.weekly_percentage_bugs_report(squad=squad)
+            mssg += bugs_percentage
+
+            #self.slack_client.post_message_to_channel(
+            #    channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+
             self.slack_client.post_message_to_channel(
                 channel=squad_params[squad], message=mssg)
+
             if(week_bugs > 0):
-                bugs_detail = get_weekly_squads_bug_detail(squad)
-                bugs_percentage = weekly_percentage_bugs_report(squad=squad)
+                bugs_detail = self.get_weekly_squads_bug_detail(squad)
                 mssg = f"""Este es un resumen de los bugs en producción de la semana:\n"""
                 for row in bugs_detail:
+                    print(row)
                     summary, issue_id, project_name, assignee = row[0], row[1], row[2], row[3]
                     mssg += f"""{issue_id} - {summary}: \n
                     - Persona asignada: {assignee} \n \n"""
-                mssg += bugs_percentage
+                #self.slack_client.post_message_to_channel(
+                #   channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+
                 self.slack_client.post_message_to_channel(
                     channel=squad_params[squad], message=mssg)
 
@@ -419,10 +428,12 @@ class TyBot(object):
             _*La productividad se calcula como story points/tiempo de resolución en días de los issues terminados en el transcurso de la semana._
             _*Se considera terminado un issue cuando llega a dev_
             """
-            mssg += weekly_percentage_bugs_report()
-
+            mssg += ("\n" + self.weekly_percentage_bugs_report())
+            print(mssg)
             self.slack_client.post_message_to_channel(
-                channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
+                channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+            #self.slack_client.post_message_to_channel(
+            #    channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
 
     def get_weekly_squads_bug_detail(self, squad_name):
         query = f"""
@@ -449,7 +460,7 @@ class TyBot(object):
                          WHERE
                            issue.issue_name = processed.issue_name
                            AND issue.updated_at = processed.updated_at
-                           AND issue.project_name = {squad_name}
+                           AND issue.project_name = '{squad_name}'
                     """
         return self.client.query(query)
 
@@ -488,14 +499,16 @@ class TyBot(object):
         mssg = ""
         if last_week_bugs != 0 and current_week_bugs > last_week_bugs:
             increase_bugs_percentage = round(((current_week_bugs/last_week_bugs)-1),2)*100
-            mssg = f"Los bugs esta semana aumentaron: {increase_bugs_percentage}%"
+            mssg = f"- Los bugs esta semana aumentaron: {increase_bugs_percentage}%"
         elif last_week_bugs != 0 and current_week_bugs < last_week_bugs:
-            decrease_bugs_percentage = round(((current_week_bugs/last_week_bugs)-1),2)*100
-            mssg = f"Los bugs esta semana disminuyeron: {increase_bugs_percentage}%"
+            decrease_bugs_percentage = round((1-(current_week_bugs/last_week_bugs)),2)*100
+            mssg = f"- Los bugs esta semana disminuyeron: {decrease_bugs_percentage}%"
         elif last_week_bugs != 0 and current_week_bugs == last_week_bugs: 
-            mssg = f"Los bugs esta semana se mantuvieron iguales"
+            mssg = f"- Los bugs esta semana se mantuvieron iguales"
         elif last_week_bugs == 0 and current_week_bugs > 0:
-            mssg = f"Esta semana hubo un aumento de {current_week_bugs} respecto a ningun bug la semana pasada"
+            mssg = f"- Esta semana hubo un aumento de {current_week_bugs} respecto a ningun bug la semana pasada"
+        elif last_week_bugs == 0 and current_week_bugs == 0:
+            mssg = f"Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
         
         return mssg
 

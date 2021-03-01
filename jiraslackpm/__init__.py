@@ -6,7 +6,7 @@ from config import Config
 def main():
     
     tybot = db.TyBot(Config.BQ_PROJECT, Config.BQ_DATABASE)
-    tybot.weekly_percentage_bugs_report()
+    tybot.send_weekly_tyba_performance()
     
     """
     slack_client = slack.SlackClient()
