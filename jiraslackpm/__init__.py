@@ -1,9 +1,13 @@
 import jira
 import db
 import slack_connect
-
+from config import Config
 
 def main():
+    
+    tybot = db.TyBot(Config.BQ_PROJECT, Config.BQ_DATABASE)
+    tybot.send_weekly_tyba_performance()
+    
     """
     tybot = db.TyBot("k-ren-295903", "jira")
     tybot.send_issues_qa_no_tester_report({})

@@ -5,7 +5,9 @@ from datetime import datetime
 import pytz
 
 from google.api_core.exceptions import Conflict, NotFound
+from google.cloud import bigquery_storage
 import google.cloud.bigquery as bigquery
+import google.auth
 
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user, get_all_boards, get_all_sprints_by_board
 from utils import get_users_info
@@ -24,6 +26,8 @@ class TyBot(object):
         """Initialize db class variables"""
         self.client = bigquery.Client(project=project_id)
         self.dataset_id = "{}.{}".format(self.client.project, db_name)
+        credentials, your_project_id = google.auth.default()
+        self.bqstorageclient = bigquery_storage.BigQueryReadClient(credentials=credentials)
         self.slack_client = SlackClient()
 
         try:
@@ -195,11 +199,11 @@ class TyBot(object):
         query = f"""
                     SELECT user.email, issue.issue_name, issue.issue_summary
                     FROM (SELECT
-                      issue_id,
-                      issue_name,
-                      MAX(updated_at) AS last_update
+                    issue_id,
+                    issue_name,
+                    MAX(updated_at) AS last_update
                     FROM
-                      `k-ren-295903.jira.Issue`
+                    `{self.dataset_id}.Issue`
                     GROUP BY
                       issue_id, issue_name) AS issues_last_update,
                       `k-ren-295903.jira.Issue` AS issue,
@@ -236,7 +240,7 @@ class TyBot(object):
                 mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
             else:
                 mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
-               Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+            Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
             for bad_issue in bad_issues_by_user[user_email]:
                 mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
                 mssg += " - Descripción: " + bad_issue["summary"] + "\n"
@@ -369,21 +373,27 @@ class TyBot(object):
             - Promedio de story points/día del equipo: {avg_point}\n
             - Total de bugs en la semana: {week_bugs}\n"""
 
-            # self.slack_client.post_message_to_channel(
-            #    channel=squad_params[squad], message=mssg)
+            bugs_percentage = self.weekly_percentage_bugs_report(squad=squad)
+            mssg += bugs_percentage
+
+            #self.slack_client.post_message_to_channel(
+            #    channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+
             self.slack_client.post_message_to_channel(
-                channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+                channel=squad_params[squad], message=mssg)
 
             if(week_bugs > 0):
                 bugs_detail = self.get_weekly_squads_bug_detail(squad)
                 mssg = "------------------ \n"
                 mssg += f"""Este es un resumen de los bugs en producción de la semana:\n"""
                 for row in bugs_detail:
+                    print(row)
                     summary, issue_id, project_name, assignee = row[0], row[1], row[2], row[3]
                     mssg += f"""{issue_id} - {summary}: \n
                     - Persona asignada: {assignee} \n \n"""
-                # self.slack_client.post_message_to_channel(
-                #    channel=squad_params[squad], message=mssg)
+                #self.slack_client.post_message_to_channel(
+                #   channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+
                 self.slack_client.post_message_to_channel(
                     channel=Config.SLACK_TEST_CHANNEL, message=mssg)
 
@@ -408,10 +418,93 @@ class TyBot(object):
             _*La productividad se calcula como story points/tiempo de resolución en días de los issues terminados en el transcurso de la semana._
             _*Se considera terminado un issue cuando llega a dev_
             """
-
+            mssg += ("\n" + self.weekly_percentage_bugs_report())
+            print(mssg)
             self.slack_client.post_message_to_channel(
-                channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
+                channel=Config.SLACK_TEST_CHANNEL, message=mssg)
+            #self.slack_client.post_message_to_channel(
+            #    channel=Config.SLACK_SQUAD_TYBA_EOS, message=mssg)
 
+    def get_weekly_squads_bug_detail(self, squad_name):
+        query = f"""
+                         SELECT
+                           processed.issue_summary,
+                           processed.issue_name,
+                           issue.project_name,
+                           issue.assignee
+                         FROM (
+                           SELECT
+                             issue_summary,
+                             issue_name,
+                             MAX(updated_at) AS updated_at
+                           FROM
+                             `{self.dataset_id}.Issue`
+                           WHERE
+                             DATE(created_at)>=CURRENT_DATE("UTC-5:00")-14
+                             AND issue_type = "Error"
+                             AND project_name != "Support"
+                           GROUP BY
+                             issue_summary,
+                             issue_name) AS processed,
+                          `{self.dataset_id}.Issue` AS issue
+                         WHERE
+                           issue.issue_name = processed.issue_name
+                           AND issue.updated_at = processed.updated_at
+                           AND issue.project_name = '{squad_name}'
+                    """
+        return self.client.query(query)
+
+    def weekly_percentage_bugs_report(self, squad=None):
+        query = ""
+        if squad == None:
+            query = f"""
+                    SELECT
+                    *
+                    FROM
+                        `{self.dataset_id}.{Config.WEEK_TYBA_PERFORMANCE_TABLE}`
+                    ORDER BY
+                        index_date DESC
+                    LIMIT 2;
+                    """
+        else:
+            query = f"""
+                    SELECT
+                    *
+                    FROM
+                        `{self.dataset_id}.{Config.WEEK_SQUAD_PERFORMANCE_TABLE}`
+                    WHERE
+                        project_name = '{squad}'
+                    ORDER BY
+                        index_date DESC
+                    LIMIT 2;
+                    """
+            
+        dataframe = (self.client.query(query)
+                    .result()
+                    .to_dataframe(bqstorage_client=self.bqstorageclient)
+                    )
+        current_week_bugs = dataframe['week_bugs'].iloc[0]
+        last_week_bugs = dataframe['week_bugs'].iloc[1]
+
+        mssg = ""
+        if last_week_bugs != 0 and current_week_bugs > last_week_bugs:
+            increase_bugs_percentage = round(((current_week_bugs/last_week_bugs)-1),2)*100
+            mssg = f"- Los bugs esta semana aumentaron: {increase_bugs_percentage}%"
+        elif last_week_bugs != 0 and current_week_bugs < last_week_bugs:
+            decrease_bugs_percentage = round((1-(current_week_bugs/last_week_bugs)),2)*100
+            mssg = f"- Los bugs esta semana disminuyeron: {decrease_bugs_percentage}%"
+        elif last_week_bugs != 0 and current_week_bugs == last_week_bugs: 
+            mssg = f"- Los bugs esta semana se mantuvieron iguales"
+        elif last_week_bugs == 0 and current_week_bugs > 0:
+            mssg = f"- Esta semana hubo un aumento de {current_week_bugs} respecto a ningun bug la semana pasada"
+        elif last_week_bugs == 0 and current_week_bugs == 0:
+            mssg = f"Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
+        
+        return mssg
+
+# -------------
+# End of tybot
+# -------------
 
 def load_users_into_bigquery(project_id, database_name):
     with TyBot(project_id, database_name) as db:

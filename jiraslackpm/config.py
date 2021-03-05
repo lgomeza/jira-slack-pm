@@ -10,6 +10,8 @@ class Config:
     """Flask configuration variables."""
 
     # General Config
+    BQ_PROJECT= environ.get("BQ_PROJECT")
+    BQ_DATABASE=environ.get("BQ_DATABASE")
     JIRA_API_EMAIL = environ.get("JIRA_API_EMAIL")
     JIRA_API_TOKEN = environ.get("JIRA_API_TOKEN")
     SLACK_OAUTH_ACCESS_TOKEN = environ.get('SLACK_OAUTH_ACCESS_TOKEN')
