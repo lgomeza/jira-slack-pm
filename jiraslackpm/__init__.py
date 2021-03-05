@@ -6,7 +6,9 @@ import slack_connect
 def main():
     """
     tybot = db.TyBot("k-ren-295903", "jira")
-    tybot.send_weekly_squads_performance()
+    tybot.send_issues_qa_no_tester_report({})
+    """
+    db.load_sprints("k-ren-295903", "jira")
     """
     users = jira.get_all_users()
     for user in users:
@@ -14,7 +16,7 @@ def main():
         for issue in issues:
             parsed_issue = jira.get_info_from_issue(issue)
             print(parsed_issue)
-
+    """
     """
     slack_client = slack.SlackClient()
     user = slack_client.get_user_by_email("ivan@tyba.com.co")
