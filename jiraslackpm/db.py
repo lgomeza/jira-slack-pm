@@ -429,7 +429,6 @@ class TyBot(object):
             _*Se considera terminado un issue cuando llega a dev_
             """
             mssg += ("\n" + self.weekly_percentage_bugs_report())
-            print(mssg)
             self.slack_client.post_message_to_channel(
                 channel=Config.SLACK_TEST_CHANNEL, message=mssg)
             #self.slack_client.post_message_to_channel(
@@ -508,7 +507,7 @@ class TyBot(object):
         elif last_week_bugs == 0 and current_week_bugs > 0:
             mssg = f"- Esta semana hubo un aumento de {current_week_bugs} respecto a ningun bug la semana pasada"
         elif last_week_bugs == 0 and current_week_bugs == 0:
-            mssg = f"Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
+            mssg = f"- Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
         
         return mssg
 
