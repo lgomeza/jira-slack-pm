@@ -9,7 +9,7 @@ from google.cloud import bigquery_storage
 import google.cloud.bigquery as bigquery
 import google.auth
 
-from jira import get_all_users, get_info_from_issue, get_all_issues_by_user
+from jira import get_all_users, get_info_from_issue, get_all_issues_by_user, get_all_boards, get_all_sprints_by_board
 from utils import get_users_info
 from slack_connect import SlackClient
 from config import Config
@@ -194,6 +194,60 @@ class TyBot(object):
                 print("SlackApiError:", exc,
                       "\nFallo en encontrar el correo: ", email)
 
+    def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
+        """Report all the issues without in QA without tester to their respective owners"""
+        query = f"""
+                    SELECT user.email, issue.issue_name, issue.issue_summary
+                    FROM (SELECT
+                    issue_id,
+                    issue_name,
+                    MAX(updated_at) AS last_update
+                    FROM
+                    `{self.dataset_id}.Issue`
+                    GROUP BY
+                      issue_id, issue_name) AS issues_last_update,
+                      `k-ren-295903.jira.Issue` AS issue,
+                      `k-ren-295903.jira.User` AS user,
+                      `k-ren-295903.jira.Sprint` AS sprint
+                      WHERE issue.issue_id = issues_last_update.issue_id
+                      AND issue.issue_name = issues_last_update.issue_name
+                      AND issue.updated_at = issues_last_update.last_update
+                      AND issue.assignee = user.account_id
+                      AND issue.sprint_name = sprint.name
+                      AND sprint.start_date <= CURRENT_TIMESTAMP() 
+                      AND sprint.end_date >= CURRENT_TIMESTAMP() 
+                      AND issue.sprint_status = "active"
+                      AND issue.stage = "ENV: QA"
+                      AND issue.tester IS NULL
+                 """
+        query_job = self.client.query(query)
+        bad_issues_by_user = {}
+        for row in query_job:
+            user_email = row[0]
+
+            if bad_issues_by_user.get(user_email) == None:
+                bad_issues_by_user[user_email] = []
+            bad_issue_name = row[1]
+            bad_issue_summary = row[2]
+            new_bad_issue = {
+                "name": bad_issue_name,
+                "summary": bad_issue_summary
+            }
+            bad_issues_by_user[user_email].append(new_bad_issue)
+
+        for user_email in bad_issues_by_user:
+            if(user_email in users_with_previous_bad_issues):
+                mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+            else:
+                mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
+            Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
+            for bad_issue in bad_issues_by_user[user_email]:
+                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
+                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
+            user = self.slack_client.get_user_by_email(user_email)
+            self.slack_client.post_message_to_channel(
+                channel=user['id'], message=mssg)
+
     def send_bad_issues_report(self):
         """Report all the issues without story points to their respective owners"""
 
@@ -215,6 +269,8 @@ class TyBot(object):
                     AND issue.story_points IS NULL
                     AND issue.issue_type != "Error"
                     AND issue.stage != "Backlog"
+                    AND issue.stage != "Ready for Dev"
+                    AND issue.stage != "Done"
                     AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), issue.updated_at, HOUR) <= 24
                     AND issue.updated_at IN (
                         SELECT
@@ -252,108 +308,38 @@ class TyBot(object):
             self.slack_client.post_message_to_channel(
                 channel=user['id'], message=mssg)
 
-    def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
-        """Report all the issues without in QA without tester to their respective owners"""
+        self.send_issues_qa_no_tester_report(bad_issues_by_user)
 
+    def get_weekly_squads_bug_detail(self, squad_name):
         query = f"""
-                    SELECT user.email, issue.issue_name, issue.issue_summary
-                    FROM (SELECT
-                    issue_id,
-                    issue_name,
-                    MAX(updated_at) AS last_update
-                    FROM
-                    `{self.dataset_id}.Issue`
-                    GROUP BY
-                    issue_id, issue_name) AS issues_last_update,
-                    `{self.dataset_id}.Issue` AS issue,
-                    `{self.dataset_id}.User` AS user
-                    WHERE issue.issue_id = issues_last_update.issue_id
-                    AND issue.issue_name = issues_last_update.issue_name
-                    AND issue.updated_at = issues_last_update.last_update
-                    AND issue.assignee = user.account_id
-                    AND issue.sprint_status = "active"
-                    AND issue.stage = "ENV: QA"
-                    AND issue.tester IS NULL
-                """
-        query_job = self.client.query(query)
-        bad_issues_by_user = {}
-        for row in query_job:
-            user_email = row[0]
-
-            if bad_issues_by_user.get(user_email) == None:
-                bad_issues_by_user[user_email] = []
-            bad_issue_name = row[1]
-            bad_issue_summary = row[2]
-            new_bad_issue = {
-                "name": bad_issue_name,
-                "summary": bad_issue_summary
-            }
-            bad_issues_by_user[user_email].append(new_bad_issue)
-
-        for user_email in bad_issues_by_user:
-            if(user_email in users_with_previous_bad_issues):
-                mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            else:
-                mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
-            Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            for bad_issue in bad_issues_by_user[user_email]:
-                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
-                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
-            user = self.slack_client.get_user_by_email(user_email)
-            self.slack_client.post_message_to_channel(
-                channel=user['id'], message=mssg)
-        send_issues_qa_no_tester_report(bad_issues_by_user)
-
-    def send_issues_qa_no_tester_report(self, users_with_previous_bad_issues):
-        """Report all the issues without in QA without tester to their respective owners"""
-
-        query = f"""
-                    SELECT user.email, issue.issue_name, issue.issue_summary
-                    FROM (SELECT
-                      issue_id,
-                      issue_name,
-                      MAX(updated_at) AS last_update
-                    FROM
-                      `{self.dataset_id}.Issue`
-                    GROUP BY
-                      issue_id, issue_name) AS issues_last_update,
-                      `{self.dataset_id}.Issue` AS issue,
-                      `{self.dataset_id}.User` AS user
-                      WHERE issue.issue_id = issues_last_update.issue_id
-                      AND issue.issue_name = issues_last_update.issue_name
-                      AND issue.updated_at = issues_last_update.last_update
-                      AND issue.assignee = user.account_id
-                      AND issue.sprint_status = "active"
-                      AND issue.stage = "ENV: QA"
-                      AND issue.tester IS NULL
-                 """
-        query_job = self.client.query(query)
-        bad_issues_by_user = {}
-        for row in query_job:
-            user_email = row[0]
-
-            if bad_issues_by_user.get(user_email) == None:
-                bad_issues_by_user[user_email] = []
-            bad_issue_name = row[1]
-            bad_issue_summary = row[2]
-            new_bad_issue = {
-                "name": bad_issue_name,
-                "summary": bad_issue_summary
-            }
-            bad_issues_by_user[user_email].append(new_bad_issue)
-
-        for user_email in bad_issues_by_user:
-            if(user_email in users_with_previous_bad_issues):
-                mssg = f"""También encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            else:
-                mssg = f"""¡Hola! Soy yo de nuevo :smile: \n
-               Encontré algunos Issues en QA a los que no les fue asignado un tester. Por favor revísalos y en lo posible agregales un tester :smile::\n"""
-            for bad_issue in bad_issues_by_user[user_email]:
-                mssg += " - ID del Issue: " + bad_issue["name"] + "\n"
-                mssg += " - Descripción: " + bad_issue["summary"] + "\n"
-            user = self.slack_client.get_user_by_email(user_email)
-            self.slack_client.post_message_to_channel(
-                channel=user['id'], message=mssg)
+                         SELECT
+                           processed.issue_summary,
+                           processed.issue_name,
+                           issue.project_name,
+                           user.email
+                         FROM (
+                           SELECT
+                             issue_summary,
+                             issue_name,
+                             MAX(updated_at) AS updated_at
+                           FROM
+                             `k-ren-295903.jira.Issue`
+                           WHERE
+                             DATE(created_at)>=CURRENT_DATE("UTC-5:00")-7
+                             AND issue_type = "Error"
+                             AND project_name != "Support"
+                           GROUP BY
+                             issue_summary,
+                             issue_name) AS processed,
+                          `k-ren-295903.jira.Issue` AS issue,
+                          `k-ren-295903.jira.User` AS user
+                         WHERE
+                           issue.issue_name = processed.issue_name
+                           AND issue.updated_at = processed.updated_at
+                           AND issue.project_name = "{squad_name}"
+                           AND issue.assignee = user.account_id
+                    """
+        return self.client.query(query)
 
     def send_weekly_squads_performance(self):
         query = f"""
@@ -368,13 +354,16 @@ class TyBot(object):
                  """
         squad_params = {
             "Tyba professional": Config.SLACK_SQUAD_TYBA_PROFESSIONAL,
+            "TPRO": Config.SLACK_SQUAD_TYBA_PROFESSIONAL,
             "Banner - Tyba Digital Colombia": Config.SLACK_SQUAD_BANNER,
+            "Banner": Config.SLACK_SQUAD_BANNER,
             "Fury": Config.SLACK_SQUAD_FURY,
             "Parker": Config.SLACK_SQUAD_PARKER,
             "Robo": Config.SLACK_SQUAD_ROBO,
             "Groot": Config.SLACK_SQUAD_GROOT,
             "ROGERS": Config.SLACK_SQUAD_ROGERS,
             "Stark": Config.SLACK_SQUAD_STARK,
+            "TybaCO": Config.SLACK_SQUAD_TYBACO,
         }
         query_job = self.client.query(query)
         for row in query_job:
@@ -395,7 +384,8 @@ class TyBot(object):
 
             if(week_bugs > 0):
                 bugs_detail = self.get_weekly_squads_bug_detail(squad)
-                mssg = f"""Este es un resumen de los bugs en producción de la semana:\n"""
+                mssg = "------------------ \n"
+                mssg += f"""Este es un resumen de los bugs en producción de la semana:\n"""
                 for row in bugs_detail:
                     print(row)
                     summary, issue_id, project_name, assignee = row[0], row[1], row[2], row[3]
@@ -405,7 +395,7 @@ class TyBot(object):
                 #   channel=Config.SLACK_TEST_CHANNEL, message=mssg)
 
                 self.slack_client.post_message_to_channel(
-                    channel=squad_params[squad], message=mssg)
+                    channel=Config.SLACK_TEST_CHANNEL, message=mssg)
 
     def send_weekly_tyba_performance(self):
         query = f"""
@@ -585,9 +575,10 @@ def load_new_issues_into_bigquery(project_id, database_name):
                     updated_date = dateutil.parser.parse(
                         parsed_issue["updated_at"])
 
-                    last_day_date = now - dt2.timedelta(1)
-                    if created_date > last_day_date or updated_date > last_day_date:
-                        records.append(parsed_issue)
+                    #last_day_date = now - dt2.timedelta(1)
+                    # if created_date > last_day_date or updated_date > last_day_date:
+                    #    records.append(parsed_issue)
+                    records.append(parsed_issue)
 
                 if records:
                     db.insert_records("Issue", records)
@@ -602,3 +593,43 @@ def load_new_issues_into_bigquery(project_id, database_name):
                         user["accountId"], user["accountType"]
                     )
                 )
+
+
+def load_sprints(project_id, database_name):
+    with TyBot(project_id, database_name) as db:
+
+        query = f"""
+                SELECT
+                  DISTINCT name
+                FROM
+                  `{db.dataset_id}.{Config.SPRINT_TABLE}`
+                """
+        query_job = db.client.query(query)
+
+        sprints_already_up = []
+        for row in query_job:
+            sprint_name = row[0]
+            sprints_already_up.append(sprint_name)
+
+        boards = get_all_boards()
+        for board in boards:
+            sprints = get_all_sprints_by_board(board["id"])
+            records = []
+            for sprint in sprints:
+                parsed_sprint = {}
+                if sprint.get("name") not in sprints_already_up and sprint.get("startDate"):
+                    parsed_sprint["name"] = sprint.get("name")
+                    parsed_sprint["start_date"] = str(dateutil.parser.parse(
+                        sprint.get("startDate")))
+                    parsed_sprint["end_date"] = str(dateutil.parser.parse(
+                        sprint.get("endDate")))
+                    print(parsed_sprint)
+                    records.append(parsed_sprint)
+
+            if records:
+                db.insert_records("Sprint", records)
+            print(
+                "Inserted {} new sprints for board: {}".format(
+                    len(records), board["id"]
+                )
+            )

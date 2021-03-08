@@ -13,7 +13,7 @@ api_token = Config.JIRA_API_TOKEN
 AUTH = HTTPBasicAuth(Config.JIRA_API_EMAIL, api_token)
 HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
 PARAMS = {}
-BASE_URL = "https://starkmvp.atlassian.net/rest/api/3/"
+BASE_URL = "https://starkmvp.atlassian.net/rest/"
 
 
 def call_api(uri: str, method="GET", headers=None, auth=AUTH, params=None) -> dict:
@@ -28,7 +28,7 @@ def call_api(uri: str, method="GET", headers=None, auth=AUTH, params=None) -> di
 
 def get_all_users(pprint: bool = False) -> list:
     response = []
-    uri = BASE_URL + "users/search"
+    uri = BASE_URL + "api/3/users/search"
     offset = 0
     condition = True
     while condition:
@@ -45,7 +45,7 @@ def get_all_users(pprint: bool = False) -> list:
 
 
 def get_all_issues_by_user(account_id: str, pprint=False) -> list:
-    uri = BASE_URL + "search"
+    uri = BASE_URL + "api/3/search"
     response = []
     offset = 0
     while True:
@@ -62,7 +62,7 @@ def get_all_issues_by_user(account_id: str, pprint=False) -> list:
 
 
 def get_issues_in_current_week_by_user(account_id: str, pprint=False) -> list:
-    uri = BASE_URL + "search"
+    uri = BASE_URL + "api/3/search"
     response = []
     offset = 0
     while True:
@@ -102,8 +102,10 @@ def get_info_from_issue(issue: dict) -> dict:
 
     sprint = s_get(issue, "fields.customfield_10021")
     most_recent_sprint_state = None
+    most_recent_sprint_name = None
     if sprint and len(sprint) > 0:
         most_recent_sprint_state = sprint[len(sprint) - 1]["state"]
+        most_recent_sprint_name = sprint[len(sprint) - 1]["name"]
 
     tester = s_get(issue, "fields.customfield_10050")
     tester_mail = None
@@ -127,4 +129,40 @@ def get_info_from_issue(issue: dict) -> dict:
         "updated_at": str(dateutil.parser.parse(s_get(issue, "fields.updated"))),
         "issue_type": s_get(issue, "fields.issuetype.name"),
         "tester": tester_mail,
-        "sprint_status": most_recent_sprint_state}
+        "sprint_status": most_recent_sprint_state,
+        "sprint_name": most_recent_sprint_name}
+
+
+def get_all_boards(pprint: bool = False) -> list:
+    response = []
+    uri = BASE_URL + "agile/1.0/board"
+    offset = 0
+    condition = True
+    while condition:
+        params = {"startAt": offset}
+        boards = call_api(uri, params=params)
+        if pprint:
+            print_json(boards)
+        if boards.get("values"):
+            response += boards.get("values")
+            offset += 50
+        else:
+            condition = False
+    return response
+
+
+def get_all_sprints_by_board(board_id: int, pprint=False) -> list:
+    uri = BASE_URL + f"agile/1.0/board/{board_id}/sprint"
+    response = []
+    offset = 0
+    while True:
+        params = {"startAt": offset}
+        sprints = call_api(uri, params=params)
+        if pprint:
+            print_json(sprints)
+        if sprints.get("values"):
+            response += sprints.get("values")
+            offset += 50
+        else:
+            break
+    return response
