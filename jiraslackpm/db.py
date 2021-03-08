@@ -9,10 +9,12 @@ from google.cloud import bigquery_storage
 import google.cloud.bigquery as bigquery
 import google.auth
 
+import query_manager
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user, get_all_boards, get_all_sprints_by_board
 from utils import get_users_info
 from slack_connect import SlackClient
 from config import Config
+
 
 
 class TyBot(object):
@@ -206,9 +208,9 @@ class TyBot(object):
                     `{self.dataset_id}.Issue`
                     GROUP BY
                       issue_id, issue_name) AS issues_last_update,
-                      `k-ren-295903.jira.Issue` AS issue,
-                      `k-ren-295903.jira.User` AS user,
-                      `k-ren-295903.jira.Sprint` AS sprint
+                      `{self.dataset_id}.Issue` AS issue,
+                      `{self.dataset_id}.User` AS user,
+                      `{self.dataset_id}.{Config.SPRINT_TABLE}` AS sprint
                       WHERE issue.issue_id = issues_last_update.issue_id
                       AND issue.issue_name = issues_last_update.issue_name
                       AND issue.updated_at = issues_last_update.last_update
@@ -323,7 +325,7 @@ class TyBot(object):
                              issue_name,
                              MAX(updated_at) AS updated_at
                            FROM
-                             `k-ren-295903.jira.Issue`
+                             `{self.dataset_id}.Issue`
                            WHERE
                              DATE(created_at)>=CURRENT_DATE("UTC-5:00")-7
                              AND issue_type = "Error"
@@ -331,8 +333,8 @@ class TyBot(object):
                            GROUP BY
                              issue_summary,
                              issue_name) AS processed,
-                          `k-ren-295903.jira.Issue` AS issue,
-                          `k-ren-295903.jira.User` AS user
+                          `{self.dataset_id}.Issue` AS issue,
+                          `{self.dataset_id}.User` AS user
                          WHERE
                            issue.issue_name = processed.issue_name
                            AND issue.updated_at = processed.updated_at
@@ -500,6 +502,113 @@ class TyBot(object):
             mssg = f"- Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
         
         return mssg
+    
+    def process_warning_issues(self, query_job, dev_qa):
+        issues_by_user = {}
+        for row in query_job:
+            user_email = row[2]
+            print(row)
+            if issues_by_user.get(user_email) == None:
+                issues_by_user[user_email] = []
+            issue_name = row[0]
+            issue_summary = row[1]
+            issue_sprint_start_date = row[4]
+            
+
+            days_in_key = f"days_in_{dev_qa}"
+            days_in_val = row[3]
+
+            now = datetime.now()
+            sprint_start_date = datetime.strptime(issue_sprint_start_date, "%Y-%m-%d")
+            sprint_days = abs((now - sprint_start_date).days)
+
+            new_issue = {
+                "name": issue_name,
+                "summary": issue_summary,
+                days_in_key: days_in_val,
+                "sprint_days": sprint_days
+            }
+            issues_by_user[user_email].append(new_issue)
+        
+        return issues_by_user
+
+    def warning_issues_qadev(self, week):
+        query_qa = query_manager.warning_issues_qa()
+        query_dev = query_manager.warning_issues_dev()
+
+        query_qa_result = self.client.query(query_qa)
+        query_dev_result = self.client.query(query_dev)
+        
+        print(query_qa_result)
+        print(query_dev_result)
+
+        warning_issues_qa = self.process_warning_issues(query_qa_result, "qa")
+        warning_issues_dev = self.process_warning_issues(query_dev_result, "dev")
+
+        print(warning_issues_qa)
+        print(warning_issues_dev)
+
+        if week == 1:
+            for user_email in warning_issues_qa:
+                issues_count = 0
+                warning_issues_str = ""
+                for warning_issue in warning_issues_qa[user_email]:
+                    print(warning_issue)
+                    if warning_issue["days_in_qa"] == 4 and warning_issue["sprint_days"] <= 7:
+                        issues_count+=1
+                        warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
+                        warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
+                if issues_count != 0:
+                    warning_issues_start = ""
+                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    print(warning_issues_mssg)
+
+            for user_email in warning_issues_dev:
+                issues_count = 0
+                warning_issues_str = ""
+                for warning_issue in warning_issues_dev[user_email]:
+                    print(warning_issue)
+                    if warning_issue["days_in_dev"] == 4 and warning_issue["sprint_days"] <= 7:
+                        issues_count+=1
+                        warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
+                        warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
+                if issues_count != 0:
+                    warning_issues_start = ""
+                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    print(warning_issues_mssg)
+
+        elif week == 2:
+            for user_email in warning_issues_qa:
+                issues_count = 0
+                warning_issues_str = ""
+                for warning_issue in warning_issues_qa[user_email]:
+                    print(warning_issue)
+                    if warning_issue["days_in_qa"] >= 3 and warning_issue["sprint_days"] > 7:
+                        issues_count+=1
+                        warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
+                        warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
+                if issues_count != 0:
+                    warning_issues_start = ""
+                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    print(warning_issues_mssg)
+            
+            for user_email in warning_issues_dev:
+                issues_count = 0
+                warning_issues_str = ""
+                for warning_issue in warning_issues_dev[user_email]:
+                    print(warning_issue)
+                    if warning_issue["days_in_dev"] >= 3 and warning_issue["sprint_days"] > 7:
+                        issues_count+=1
+                        warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
+                        warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
+                if issues_count != 0:
+                    print(user_email)
+                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en DEV/QA. Aquí va el detalle:\n"
+                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    print(warning_issues_mssg)
+
+
+
 
 # -------------
 # End of tybot
