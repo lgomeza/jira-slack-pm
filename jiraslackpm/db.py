@@ -538,22 +538,15 @@ class TyBot(object):
 
         query_qa_result = self.client.query(query_qa)
         query_dev_result = self.client.query(query_dev)
-        
-        print(query_qa_result)
-        print(query_dev_result)
 
         warning_issues_qa = self.process_warning_issues(query_qa_result, "qa")
         warning_issues_dev = self.process_warning_issues(query_dev_result, "dev")
-
-        print(warning_issues_qa)
-        print(warning_issues_dev)
 
         if week == 1:
             for user_email in warning_issues_qa:
                 issues_count = 0
                 warning_issues_str = ""
                 for warning_issue in warning_issues_qa[user_email]:
-                    print(warning_issue)
                     if warning_issue["days_in_qa"] == 4 and warning_issue["sprint_days"] <= 7:
                         issues_count+=1
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
@@ -561,13 +554,14 @@ class TyBot(object):
                 if issues_count != 0:
                     warning_issues_start = ""
                     warning_issues_mssg = warning_issues_start + warning_issues_str
-                    print(warning_issues_mssg)
+                    #print(warning_issues_mssg)
+                    user = self.slack_client.get_user_by_email(user_email)
+                    self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
 
             for user_email in warning_issues_dev:
                 issues_count = 0
                 warning_issues_str = ""
                 for warning_issue in warning_issues_dev[user_email]:
-                    print(warning_issue)
                     if warning_issue["days_in_dev"] == 4 and warning_issue["sprint_days"] <= 7:
                         issues_count+=1
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
@@ -575,14 +569,15 @@ class TyBot(object):
                 if issues_count != 0:
                     warning_issues_start = ""
                     warning_issues_mssg = warning_issues_start + warning_issues_str
-                    print(warning_issues_mssg)
+                    #print(warning_issues_mssg)
+                    user = self.slack_client.get_user_by_email(user_email)
+                    self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
 
         elif week == 2:
             for user_email in warning_issues_qa:
                 issues_count = 0
                 warning_issues_str = ""
                 for warning_issue in warning_issues_qa[user_email]:
-                    print(warning_issue)
                     if warning_issue["days_in_qa"] >= 3 and warning_issue["sprint_days"] > 7:
                         issues_count+=1
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
@@ -590,13 +585,14 @@ class TyBot(object):
                 if issues_count != 0:
                     warning_issues_start = ""
                     warning_issues_mssg = warning_issues_start + warning_issues_str
-                    print(warning_issues_mssg)
+                    #print(warning_issues_mssg)
+                    user = self.slack_client.get_user_by_email(user_email)
+                    self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
             
             for user_email in warning_issues_dev:
                 issues_count = 0
                 warning_issues_str = ""
                 for warning_issue in warning_issues_dev[user_email]:
-                    print(warning_issue)
                     if warning_issue["days_in_dev"] >= 3 and warning_issue["sprint_days"] > 7:
                         issues_count+=1
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
@@ -605,9 +601,8 @@ class TyBot(object):
                     print(user_email)
                     warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en DEV/QA. Aquí va el detalle:\n"
                     warning_issues_mssg = warning_issues_start + warning_issues_str
-                    print(warning_issues_mssg)
-
-
+                    user = self.slack_client.get_user_by_email(user_email)
+                    self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
 
 
 # -------------
