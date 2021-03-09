@@ -2,32 +2,6 @@ from config import Config
 
 DATASET_ID = "{}.{}".format(Config.BQ_PROJECT,Config.BQ_DATABASE)
 
-def performance_devs():
-    query = f"""
-    SELECT
-    *
-    FROM
-    `{self.dataset_id}.{Config.WEEK_DEVS_PERFORMANCE_TABLE}` AS week_dev_pf
-    WHERE
-    week_dev_pf.index_date = CURRENT_DATE("UTC-5:00")
-    ORDER BY
-    week_dev_pf.avg_points DESC
-    """
-
-    return query
-
-def func():
-    query = f"""
-    """
-
-    return query
-
-def func():
-    query = f"""
-    """
-
-    return query
-
 def warning_issues_dev():
     query = f"""
         SELECT

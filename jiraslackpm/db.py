@@ -1,4 +1,3 @@
-import sqlite3
 import datetime as dt2
 import dateutil.parser
 from datetime import datetime
@@ -14,8 +13,6 @@ from jira import get_all_users, get_info_from_issue, get_all_issues_by_user, get
 from utils import get_users_info
 from slack_connect import SlackClient
 from config import Config
-
-
 
 class TyBot(object):
     """
@@ -502,7 +499,8 @@ class TyBot(object):
             mssg = f"- Genial!! :smile: dos semanas seguidas sin bugs, sigamos así :3."
         
         return mssg
-    
+####
+  
     def process_warning_issues(self, query_job, dev_qa):
         issues_by_user = {}
         for row in query_job:
@@ -531,6 +529,7 @@ class TyBot(object):
             issues_by_user[user_email].append(new_issue)
         
         return issues_by_user
+
 
     def warning_issues_qadev(self, week):
         query_qa = query_manager.warning_issues_qa()
@@ -624,7 +623,7 @@ class TyBot(object):
                 warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
                 user = self.slack_client.get_user_by_email(user_email)
                 self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
-
+####
 
 # -------------
 # End of tybot

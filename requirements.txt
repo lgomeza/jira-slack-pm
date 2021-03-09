@@ -9,5 +9,4 @@ google-cloud-bigquery>=2.7.0
 slack-sdk>=3.3.0
 python-dotenv==0.15.0
 pandas==1.2.2
-
-
+google-cloud-bigquery-storage>=2.3.0
