@@ -9,7 +9,7 @@ from google.cloud import bigquery_storage
 import google.cloud.bigquery as bigquery
 import google.auth
 
-import query_manager
+import query_manager as query_manager
 from jira import get_all_users, get_info_from_issue, get_all_issues_by_user, get_all_boards, get_all_sprints_by_board
 from utils import get_users_info
 from slack_connect import SlackClient
@@ -552,8 +552,9 @@ class TyBot(object):
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
                         warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
                 if issues_count != 0:
-                    warning_issues_start = ""
-                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en QA. Aquí va el detalle:\n"
+                    warning_issues_end = "¡Ánimo! Ve con toda la energía en este sprint :smile:"
+                    warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
                     #print(warning_issues_mssg)
                     user = self.slack_client.get_user_by_email(user_email)
                     self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
@@ -567,8 +568,9 @@ class TyBot(object):
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
                         warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
                 if issues_count != 0:
-                    warning_issues_start = ""
-                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en DEV. Aquí va el detalle:\n"
+                    warning_issues_end = "¡Ánimo! Ve con toda la energía en este sprint :smile:"
+                    warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
                     #print(warning_issues_mssg)
                     user = self.slack_client.get_user_by_email(user_email)
                     self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
@@ -583,8 +585,9 @@ class TyBot(object):
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
                         warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
                 if issues_count != 0:
-                    warning_issues_start = ""
-                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en QA. Aquí va el detalle:\n"
+                    warning_issues_end = "¡Ánimo! Ve con toda la energía en este sprint :smile:"
+                    warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
                     #print(warning_issues_mssg)
                     user = self.slack_client.get_user_by_email(user_email)
                     self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
@@ -598,11 +601,29 @@ class TyBot(object):
                         warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
                         warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
                 if issues_count != 0:
-                    print(user_email)
-                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en DEV/QA. Aquí va el detalle:\n"
-                    warning_issues_mssg = warning_issues_start + warning_issues_str
+                    warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 3 días en DEV. Aquí va el detalle:\n"
+                    warning_issues_end = "¡Ánimo! Ve con toda la energía en este sprint :smile:"
+                    warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
                     user = self.slack_client.get_user_by_email(user_email)
                     self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
+        
+    def warning_issues_ready_dev():
+        query_ready_dev = query_manager.warning_issues_ready_dev()
+        query_ready_dev_result = self.client.query(query_ready_dev)
+        warning_issues_ready_dev = self.process_warning_issues(query_qa_result, "ready_dev")
+        for user_email in warning_issues_ready_dev:
+            issues_count = 0
+            warning_issues_str = ""
+            for warning_issue in warning_issues_ready_dev[user_email]:
+                issues_count+=1
+                warning_issues_str += " - ID del Issue: " + warning_issue["name"] + "\n"
+                warning_issues_str += " - Descripción: " + warning_issue["summary"] + "\n"
+            if issues_count != 0:
+                warning_issues_start = "¡Hola! Noté que algunos issues asignados a ti llevan más de 7 días en 'Ready for DEV'. Aquí va el detalle:\n"
+                warning_issues_end = "¡Ánimo! Ve con toda la energía en este sprint :smile:"
+                warning_issues_mssg = warning_issues_start + warning_issues_str + warning_issues_end
+                user = self.slack_client.get_user_by_email(user_email)
+                self.slack_client.post_message_to_channel(channel=user['id'], message=warning_issues_mssg)
 
 
 # -------------
